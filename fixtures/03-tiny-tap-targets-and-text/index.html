@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fixture 03 - Tiny Tap Targets and Text</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .elementor { width: 100%; padding: 20px; }
+    .elementor-element { position: relative; }
+
+    /* Planted Bug 1: Small text on mobile (< 14px) */
+    .micro-text { font-size: 10px; color: #7f8c8d; line-height: 1.2; }
+
+    /* Planted Bug 2: Small tap target on mobile (< 44x44px) */
+    .tiny-btn {
+      display: inline-block;
+      width: 28px;
+      height: 22px;
+      line-height: 22px;
+      font-size: 10px;
+      background: #27ae60;
+      color: #fff;
+      text-align: center;
+      text-decoration: none;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    /* Planted Bug 3: Overlapping sibling elements (> 10% bounding box area intersection) */
+    .overlap-box-1 {
+      position: absolute;
+      top: 120px;
+      left: 20px;
+      width: 160px;
+      height: 50px;
+      background: rgba(52, 152, 219, 0.7);
+      color: #fff;
+      padding: 8px;
+    }
+    .overlap-box-2 {
+      position: absolute;
+      top: 135px;
+      left: 50px;
+      width: 160px;
+      height: 50px;
+      background: rgba(231, 76, 60, 0.7);
+      color: #fff;
+      padding: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="elementor elementor-103">
+    <div class="elementor-element elementor-element-populate" data-id="sec-card-action-bar" id="sec-card-action-bar" style="min-height: 250px;">
+      <div class="elementor-element elementor-widget elementor-widget-text-editor" data-id="w-legal-disclaimer">
+        <div class="elementor-widget-container">
+          <p class="micro-text">* Terms and conditions apply. By clicking you agree to privacy policy.</p>
+        </div>
+      </div>
+
+      <div class="elementor-element elementor-widget elementor-widget-button" data-id="w-tiny-cta-btn" style="margin-top: 15px;">
+        <div class="elementor-widget-container">
+          <button class="tiny-btn" type="button">Go</button>
+        </div>
+      </div>
+
+      <div class="elementor-element elementor-widget elementor-widget-heading overlap-box-1" data-id="w-badge-tag-overlap-1">
+        <div class="elementor-widget-container">
+          <h4>Badge Label</h4>
+        </div>
+      </div>
+
+      <div class="elementor-element elementor-widget elementor-widget-heading overlap-box-2" data-id="w-badge-tag-overlap-2">
+        <div class="elementor-widget-container">
+          <h4>Conflicting Label</h4>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

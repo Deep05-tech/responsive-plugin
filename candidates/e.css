@@ -1,0 +1,4 @@
+html, body { overflow-x: clip; }
+@media (max-width: 1024px) {
+  [class*="vispan-reveal"] { transform: none !important; }
+}

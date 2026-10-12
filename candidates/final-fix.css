@@ -1,0 +1,10 @@
+html, body { overflow-x: clip; }
+@media (max-width: 1024px) {
+  body .vispan-reveal-left,
+  body .vispan-reveal-right { transform: translate3d(0, 40px, 0); }
+}
+@media (max-width: 767px) {
+  .elementor-element-vispan_industry_widget a,
+  .elementor-element-vispan_hero_text a { display: inline-flex; align-items: center; min-height: 44px; padding: 12px 8px; box-sizing: border-box; }
+  .menu-icon-8, .offcanvas__close, .header__logo-8 a { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
+}

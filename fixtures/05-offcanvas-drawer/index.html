@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fixture 05 - Closed Offcanvas Drawer + Real Overflowing Box</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #ffffff; }
+
+    /* Theme Offcanvas Drawer (closed / offscreen via translateX) */
+    .offcanvas {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 300px;
+      height: 100vh;
+      background: #1e293b;
+      transform: translateX(100%); /* Parked at rect.right = 675px on 375px viewport */
+      visibility: visible;
+      z-index: 1050;
+    }
+
+    .elementor { width: 100%; }
+    .elementor-section { width: 100%; }
+
+    /* Planted Bug: Real overflowing element with 412px width */
+    #real-overflow-box {
+      width: 412px;
+      height: 120px;
+      background: #3b82f6;
+      color: #ffffff;
+      padding: 16px;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Closed offcanvas drawer parked offscreen -->
+  <div id="offcanvasOne" class="offcanvas offcanvas-end" tabindex="-1" aria-hidden="true">
+    <div class="offcanvas-body">
+      <p style="color: #fff;">Theme Offcanvas Navigation Menu</p>
+    </div>
+  </div>
+
+  <div class="elementor elementor-105">
+    <section class="elementor-element elementor-section" data-id="sec-hero" id="sec-hero">
+      <div class="elementor-container">
+        <div class="elementor-element elementor-widget" data-id="real-overflow-box" id="real-overflow-box">
+          <p>Real overflowing Elementor card (412px wide on 375px viewport)</p>
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

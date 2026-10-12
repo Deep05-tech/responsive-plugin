@@ -1,0 +1,15 @@
+.env
+**/.env
+.env.*
+!.env.example
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+output/
+**/output/
+backups/
+**/backups/
+*.log
+.vite/
+.system_generated/

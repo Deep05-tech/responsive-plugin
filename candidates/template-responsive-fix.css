@@ -1,0 +1,348 @@
+/* -------------------------------------------------------------
+   RESPONSIVE FIX FOR NON-RESPONSIVE ENTERPRISE TEMPLATE
+   Ensures 0 P0 overflows across Desktop (1280px), Tablet (768px), and Mobile (375px)
+   ------------------------------------------------------------- */
+
+/* 1. Global Fluid Canvas & Max-Width Caps */
+html, body {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+}
+
+header.fixed-header,
+main.page-canvas,
+section.hero-section,
+section.services-section,
+section.gallery-section,
+section.bottom-inquiry-section,
+footer.fixed-footer {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* 2. Desktop Cap (screens <= 1400px down to 1025px) */
+@media (max-width: 1400px) {
+  header.fixed-header {
+    padding: 0 30px !important;
+  }
+  section.hero-section {
+    padding: 50px 30px !important;
+  }
+  .hero-content {
+    width: 58% !important;
+  }
+  .hero-metrics {
+    width: 100% !important;
+  }
+  .hero-inquiry-card {
+    width: 38% !important;
+    min-width: 380px !important;
+  }
+  .form-group input,
+  .form-group select,
+  .form-group textarea,
+  .form-submit-btn {
+    width: 100% !important;
+  }
+  .services-grid,
+  .gallery-grid,
+  .bottom-container {
+    width: 100% !important;
+  }
+  .service-card {
+    width: calc(33.333% - 16px) !important;
+  }
+  .gallery-item {
+    width: calc(25% - 15px) !important;
+  }
+  .gallery-item img,
+  .gallery-caption {
+    width: 100% !important;
+  }
+  .bottom-info {
+    width: 42% !important;
+  }
+  .bottom-form-card {
+    width: 55% !important;
+  }
+  .bottom-form-row,
+  .bottom-form-group-full,
+  .bottom-form-group-full textarea,
+  .bottom-submit-btn {
+    width: 100% !important;
+  }
+  .bottom-form-group-half {
+    width: calc(50% - 10px) !important;
+  }
+  .bottom-form-group-half input,
+  .bottom-form-group-half select {
+    width: 100% !important;
+  }
+}
+
+/* 3. Tablet Breakdown (<= 1024px) */
+@media (max-width: 1024px) {
+  header.fixed-header {
+    padding: 0 24px !important;
+    height: auto !important;
+    min-height: 70px !important;
+    flex-wrap: wrap !important;
+    gap: 12px !important;
+  }
+
+  nav.header-nav {
+    width: 100% !important;
+    order: 3 !important;
+    justify-content: space-around !important;
+    padding-bottom: 12px !important;
+  }
+
+  section.hero-section {
+    height: auto !important;
+    flex-direction: column !important;
+    padding: 40px 24px !important;
+    gap: 40px !important;
+  }
+
+  .hero-content {
+    width: 100% !important;
+  }
+
+  .hero-metrics {
+    width: 100% !important;
+    height: auto !important;
+    flex-wrap: wrap !important;
+    gap: 16px !important;
+  }
+
+  .metric-box {
+    width: calc(33.333% - 11px) !important;
+  }
+
+  .hero-inquiry-card {
+    width: 100% !important;
+    max-width: 550px !important;
+    height: auto !important;
+    margin: 0 auto !important;
+  }
+
+  section.services-section {
+    padding: 60px 24px !important;
+  }
+
+  .section-header {
+    width: 100% !important;
+  }
+
+  .services-grid {
+    width: 100% !important;
+    flex-direction: column !important;
+    gap: 24px !important;
+  }
+
+  .service-card {
+    width: 100% !important;
+    height: auto !important;
+  }
+
+  section.gallery-section {
+    padding: 60px 24px !important;
+  }
+
+  .gallery-grid {
+    width: 100% !important;
+    height: auto !important;
+    flex-wrap: wrap !important;
+    gap: 20px !important;
+  }
+
+  .gallery-item {
+    width: calc(50% - 10px) !important;
+    height: auto !important;
+  }
+
+  .gallery-item img {
+    width: 100% !important;
+    height: 260px !important;
+  }
+
+  .gallery-caption {
+    width: 100% !important;
+    height: auto !important;
+  }
+
+  section.bottom-inquiry-section {
+    padding: 60px 24px !important;
+  }
+
+  .bottom-container {
+    width: 100% !important;
+    flex-direction: column !important;
+    gap: 40px !important;
+  }
+
+  .bottom-info {
+    width: 100% !important;
+  }
+
+  .bottom-form-card {
+    width: 100% !important;
+    padding: 30px 24px !important;
+  }
+
+  footer.fixed-footer {
+    height: auto !important;
+    padding: 24px !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    text-align: center !important;
+  }
+
+  footer.fixed-footer a {
+    margin: 0 10px !important;
+  }
+}
+
+/* 4. Mobile Breakdown (<= 767px) */
+@media (max-width: 767px) {
+  header.fixed-header {
+    padding: 0 16px !important;
+  }
+
+  .header-logo {
+    font-size: 20px !important;
+  }
+
+  nav.header-nav {
+    flex-wrap: wrap !important;
+    gap: 10px 16px !important;
+    justify-content: center !important;
+  }
+
+  nav.header-nav a {
+    min-height: 44px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    padding: 8px 12px !important;
+  }
+
+  .header-cta-btn {
+    min-height: 44px !important;
+  }
+
+  .hero-content h1 {
+    font-size: 30px !important;
+  }
+
+  .hero-content p {
+    font-size: 15px !important;
+  }
+
+  .metric-box {
+    width: 100% !important;
+    height: auto !important;
+  }
+
+  .hero-inquiry-card {
+    padding: 24px 18px !important;
+    min-width: 0 !important;
+  }
+
+  .form-group input,
+  .form-group select,
+  .form-group textarea,
+  .form-submit-btn {
+    min-height: 44px !important;
+  }
+
+  .service-link {
+    min-height: 44px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+  }
+
+  .section-header h2 {
+    font-size: 26px !important;
+  }
+
+  .gallery-item {
+    width: 100% !important;
+  }
+
+  .gallery-item img {
+    height: 220px !important;
+  }
+
+  .bottom-form-row {
+    flex-direction: column !important;
+    gap: 14px !important;
+    margin-bottom: 14px !important;
+  }
+
+  .bottom-form-group-half {
+    width: 100% !important;
+  }
+
+  .bottom-form-group-half input,
+  .bottom-form-group-half select,
+  .bottom-submit-btn {
+    min-height: 44px !important;
+  }
+
+  .bottom-info h2 {
+    font-size: 28px !important;
+  }
+
+  footer.fixed-footer a {
+    min-height: 44px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+  }
+}
+
+/* -------------------------------------------------------------
+   RESPONSIVE RULES FOR SAAS, LUXURY & CLINIC DEMO PAGES
+   ------------------------------------------------------------- */
+@media (max-width: 1024px) {
+  /* SaaS Demo */
+  .saas-header, .saas-hero, .saas-pricing-section, .saas-footer { width: 100% !important; min-width: 0 !important; }
+  .saas-hero { flex-direction: column !important; gap: 30px !important; }
+  .saas-hero-left, .saas-hero-right { width: 100% !important; }
+  .saas-pricing-grid { width: 100% !important; flex-wrap: wrap !important; gap: 20px !important; }
+  .saas-card { width: calc(50% - 10px) !important; min-width: 0 !important; }
+
+  /* Luxury Catalog Demo */
+  .lux-top-bar, .lux-header, .lux-hero, .lux-grid-section, .lux-vip-section, .lux-footer { width: 100% !important; min-width: 0 !important; }
+  .lux-product-grid { width: 100% !important; flex-wrap: wrap !important; gap: 20px !important; }
+  .lux-card { width: calc(50% - 10px) !important; min-width: 0 !important; }
+  .lux-vip-section { flex-direction: column !important; gap: 30px !important; }
+  .lux-vip-info, .lux-vip-form { width: 100% !important; }
+
+  /* Clinic Booking Demo */
+  .clinic-top, .clinic-header, .clinic-hero, .clinic-doctors-section, .clinic-footer { width: 100% !important; min-width: 0 !important; }
+  .clinic-hero { flex-direction: column !important; gap: 30px !important; }
+  .clinic-hero-left, .clinic-book-card { width: 100% !important; }
+  .clinic-doc-grid { width: 100% !important; flex-wrap: wrap !important; gap: 20px !important; }
+  .clinic-doc-card { width: 100% !important; min-width: 0 !important; }
+}
+
+@media (max-width: 767px) {
+  /* SaaS Demo */
+  .saas-header { height: auto !important; flex-direction: column !important; gap: 15px !important; padding: 15px !important; }
+  .saas-nav { width: 100% !important; flex-wrap: wrap !important; gap: 12px !important; justify-content: center !important; }
+  .saas-card { width: 100% !important; }
+
+  /* Luxury Catalog Demo */
+  .lux-header { height: auto !important; flex-direction: column !important; gap: 15px !important; padding: 15px !important; }
+  .lux-nav { width: 100% !important; flex-wrap: wrap !important; gap: 10px !important; justify-content: center !important; }
+  .lux-card { width: 100% !important; }
+  .lux-card img { width: 100% !important; height: auto !important; }
+
+  /* Clinic Booking Demo */
+  .clinic-header { height: auto !important; flex-direction: column !important; gap: 15px !important; padding: 15px !important; }
+  .clinic-nav { width: 100% !important; flex-wrap: wrap !important; gap: 10px !important; justify-content: center !important; }
+}
+

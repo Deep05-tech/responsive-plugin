@@ -1,0 +1,7 @@
+@media (max-width: 1024px) {
+  [class*="elementor-element-vispan_"] .elementor-widget-container * { min-width: 0 !important; max-width: 100% !important; white-space: normal !important; overflow-wrap: anywhere !important; flex-wrap: wrap !important; }
+  [class*="elementor-element-vispan_"] [style*="display: grid"], [class*="elementor-element-vispan_"] [style*="display:grid"] { grid-template-columns: minmax(0,1fr) !important; }
+  [class*="elementor-element-vispan_"] [style*="display: flex"] { flex-wrap: wrap !important; }
+  [class*="elementor-element-vispan_"] select, [class*="elementor-element-vispan_"] input, [class*="elementor-element-vispan_"] textarea { width: 100% !important; min-width: 0 !important; }
+  .vispan-inquiry-card { max-width: 100% !important; width: 100% !important; }
+}

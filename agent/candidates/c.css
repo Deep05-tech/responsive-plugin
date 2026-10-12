@@ -1,0 +1,7 @@
+@media (max-width: 1024px) {
+  .elementor-element[class*="elementor-element-vispan_"] .elementor-widget-container,
+  .elementor-element[class*="elementor-element-vispan_"] .elementor-widget-container > div { min-width: 0 !important; max-width: 100% !important; box-sizing: border-box !important; }
+  .vispan-essay-article, .vispan-inquiry-card, .vispan-hover-card { width: 100% !important; max-width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; }
+  [class*="elementor-element-vispan_"] div[style*="display: grid"], [class*="elementor-element-vispan_"] div[style*="display:grid"] { grid-template-columns: minmax(0, 1fr) !important; }
+  [class*="elementor-element-vispan_"] h3, [class*="elementor-element-vispan_"] h4 { overflow-wrap: anywhere; min-width: 0; }
+}

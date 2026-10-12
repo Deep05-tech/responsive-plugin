@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Elementor Legacy Responsive Key Reference",
+  "version": "1.0.0",
+  "allowed_suffixes": [
+    "_mobile",
+    "_tablet",
+    "_mobile_extra",
+    "_tablet_extra"
+  ],
+  "keys": {
+    "section": {
+      "padding_mobile": { "type": "dimension_box", "description": "Section padding on mobile" },
+      "padding_tablet": { "type": "dimension_box", "description": "Section padding on tablet" },
+      "padding_mobile_extra": { "type": "dimension_box", "description": "Section padding on mobile extra" },
+      "padding_tablet_extra": { "type": "dimension_box", "description": "Section padding on tablet extra" },
+      "margin_mobile": { "type": "dimension_box", "description": "Section margin on mobile" },
+      "margin_tablet": { "type": "dimension_box", "description": "Section margin on tablet" },
+      "margin_mobile_extra": { "type": "dimension_box", "description": "Section margin on mobile extra" },
+      "margin_tablet_extra": { "type": "dimension_box", "description": "Section margin on tablet extra" },
+      "reverse_order_mobile": { "type": "enum", "values": ["reverse-mobile", ""], "description": "Reverse column order on mobile" },
+      "reverse_order_tablet": { "type": "enum", "values": ["reverse-tablet", ""], "description": "Reverse column order on tablet" },
+      "content_position_mobile": { "type": "enum", "values": ["top", "middle", "bottom"], "description": "Content vertical alignment on mobile" },
+      "content_position_tablet": { "type": "enum", "values": ["top", "middle", "bottom"], "description": "Content vertical alignment on tablet" }
+    },
+    "column": {
+      "_inline_size_mobile": { "type": "number", "min": 1, "max": 100, "description": "Column width percentage on mobile (1-100)" },
+      "_inline_size_tablet": { "type": "number", "min": 1, "max": 100, "description": "Column width percentage on tablet (1-100)" },
+      "_inline_size_mobile_extra": { "type": "number", "min": 1, "max": 100, "description": "Column width percentage on mobile extra" },
+      "_inline_size_tablet_extra": { "type": "number", "min": 1, "max": 100, "description": "Column width percentage on tablet extra" },
+      "padding_mobile": { "type": "dimension_box", "description": "Column padding on mobile" },
+      "padding_tablet": { "type": "dimension_box", "description": "Column padding on tablet" },
+      "margin_mobile": { "type": "dimension_box", "description": "Column margin on mobile" },
+      "margin_tablet": { "type": "dimension_box", "description": "Column margin on tablet" },
+      "space_between_widgets_mobile": { "type": "size_slider", "description": "Widget vertical spacing on mobile" },
+      "space_between_widgets_tablet": { "type": "size_slider", "description": "Widget vertical spacing on tablet" }
+    },
+    "widget": {
+      "_element_width_mobile": { "type": "enum", "values": ["inherit", "initial", "auto"], "description": "Widget width behavior on mobile" },
+      "_element_width_tablet": { "type": "enum", "values": ["inherit", "initial", "auto"], "description": "Widget width behavior on tablet" },
+      "_element_custom_width_mobile": { "type": "size_slider", "description": "Widget custom width on mobile" },
+      "_element_custom_width_tablet": { "type": "size_slider", "description": "Widget custom width on tablet" },
+      "_padding_mobile": { "type": "dimension_box", "description": "Widget padding on mobile" },
+      "_padding_tablet": { "type": "dimension_box", "description": "Widget padding on tablet" },
+      "_margin_mobile": { "type": "dimension_box", "description": "Widget margin on mobile" },
+      "_margin_tablet": { "type": "dimension_box", "description": "Widget margin on tablet" },
+      "align_mobile": { "type": "enum", "values": ["left", "center", "right", "justify"], "description": "Alignment on mobile" },
+      "align_tablet": { "type": "enum", "values": ["left", "center", "right", "justify"], "description": "Alignment on tablet" },
+      "typography_font_size_mobile": { "type": "size_slider", "description": "Typography font size on mobile" },
+      "typography_font_size_tablet": { "type": "size_slider", "description": "Typography font size on tablet" },
+      "typography_line_height_mobile": { "type": "size_slider", "description": "Typography line height on mobile" },
+      "typography_line_height_tablet": { "type": "size_slider", "description": "Typography line height on tablet" }
+    }
+  },
+  "value_shapes": {
+    "dimension_box": {
+      "type": "object",
+      "properties": {
+        "unit": { "type": "string", "enum": ["px", "em", "%", "rem", "vh", "vw"] },
+        "top": { "type": ["string", "number"] },
+        "right": { "type": ["string", "number"] },
+        "bottom": { "type": ["string", "number"] },
+        "left": { "type": ["string", "number"] },
+        "isLinked": { "type": "boolean" }
+      },
+      "required": ["unit", "top", "right", "bottom", "left"]
+    },
+    "size_slider": {
+      "type": "object",
+      "properties": {
+        "unit": { "type": "string", "enum": ["px", "em", "%", "rem", "vw", "vh"] },
+        "size": { "type": "number" },
+        "sizes": { "type": "array" }
+      },
+      "required": ["unit", "size"]
+    }
+  }
+}

@@ -1,0 +1,3 @@
+@media (max-width: 1024px) {
+  [class*="vispan-reveal"] { transform: translateY(0) !important; }
+}

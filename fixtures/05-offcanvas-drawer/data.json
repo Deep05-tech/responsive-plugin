@@ -1,0 +1,17 @@
+[
+  {
+    "id": "sec-hero",
+    "elType": "section",
+    "settings": {},
+    "elements": [
+      {
+        "id": "real-overflow-box",
+        "elType": "widget",
+        "widgetType": "text-editor",
+        "settings": {
+          "width": "412px"
+        }
+      }
+    ]
+  }
+]

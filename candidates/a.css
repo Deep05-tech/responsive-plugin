@@ -1,0 +1,9 @@
+@media (max-width: 767px) {
+  [class*="elementor-element-vispan_"] { max-width: 100%; box-sizing: border-box; }
+  [class*="elementor-element-vispan_"] img,
+  [class*="elementor-element-vispan_"] iframe { max-width: 100%; height: auto; }
+  [class*="elementor-element-vispan_"] table { display: block; max-width: 100%; overflow-x: auto; }
+  [class*="elementor-element-vispan_"] input,
+  [class*="elementor-element-vispan_"] select,
+  [class*="elementor-element-vispan_"] textarea { max-width: 100%; }
+}

@@ -1,0 +1,44 @@
+[
+  {
+    "id": "hdr-main-container",
+    "elType": "container",
+    "isInner": false,
+    "settings": {
+      "flex_direction": "row",
+      "flex_wrap": "nowrap",
+      "flex_justify_content": "space-between",
+      "padding": {
+        "unit": "px",
+        "top": "16",
+        "right": "24",
+        "bottom": "16",
+        "left": "24",
+        "isLinked": false
+      }
+    },
+    "elements": [
+      {
+        "id": "hdr-site-logo",
+        "elType": "widget",
+        "isInner": false,
+        "widgetType": "image",
+        "settings": {
+          "image": { "url": "https://picsum.photos/180/50" },
+          "width": { "unit": "px", "size": 180 }
+        },
+        "elements": []
+      },
+      {
+        "id": "hdr-nav-menu-widget",
+        "elType": "widget",
+        "isInner": false,
+        "widgetType": "nav-menu",
+        "settings": {
+          "layout": "horizontal",
+          "submenu_icon": { "value": "fas fa-caret-down", "library": "fa-solid" }
+        },
+        "elements": []
+      }
+    ]
+  }
+]

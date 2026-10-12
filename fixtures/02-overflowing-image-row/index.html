@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fixture 02 - Overflowing Image Row</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .elementor { width: 100%; padding: 20px; }
+    .elementor-element { position: relative; }
+
+    /* Planted Bug: Flex row nowrap with 3 fixed-width image widgets causing horizontal overflow */
+    #sec-img-gallery-row {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      gap: 20px;
+      width: 100%;
+    }
+    .img-widget {
+      flex: 0 0 320px;
+      width: 320px;
+      min-width: 320px;
+    }
+    .img-widget img {
+      width: 320px;
+      height: 200px;
+      object-fit: cover;
+      display: block;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="elementor elementor-102">
+    <div class="elementor-element elementor-element-populate" data-id="sec-img-gallery-row" id="sec-img-gallery-row">
+      <div class="elementor-element elementor-widget elementor-widget-image img-widget" data-id="img-card-1">
+        <div class="elementor-widget-container">
+          <svg width="320" height="200" style="background:#e74c3c; display:block; border-radius:8px;">
+            <text x="50%" y="50%" fill="#fff" dominant-baseline="middle" text-anchor="middle">Image 1 (320px)</text>
+          </svg>
+        </div>
+      </div>
+      <div class="elementor-element elementor-widget elementor-widget-image img-widget" data-id="img-card-2">
+        <div class="elementor-widget-container">
+          <svg width="320" height="200" style="background:#2ecc71; display:block; border-radius:8px;">
+            <text x="50%" y="50%" fill="#fff" dominant-baseline="middle" text-anchor="middle">Image 2 (320px)</text>
+          </svg>
+        </div>
+      </div>
+      <div class="elementor-element elementor-widget elementor-widget-image img-widget" data-id="img-card-3">
+        <div class="elementor-widget-container">
+          <svg width="320" height="200" style="background:#f39c12; display:block; border-radius:8px;">
+            <text x="50%" y="50%" fill="#fff" dominant-baseline="middle" text-anchor="middle">Image 3 (320px)</text>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

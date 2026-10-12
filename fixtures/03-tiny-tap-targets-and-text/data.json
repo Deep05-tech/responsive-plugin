@@ -1,0 +1,62 @@
+[
+  {
+    "id": "sec-card-action-bar",
+    "elType": "container",
+    "isInner": false,
+    "settings": {
+      "padding": {
+        "unit": "px",
+        "top": "20",
+        "right": "20",
+        "bottom": "20",
+        "left": "20",
+        "isLinked": true
+      }
+    },
+    "elements": [
+      {
+        "id": "w-legal-disclaimer",
+        "elType": "widget",
+        "isInner": false,
+        "widgetType": "text-editor",
+        "settings": {
+          "editor": "<p class='micro-text'>* Terms and conditions apply. By clicking you agree to privacy policy.</p>",
+          "typography_font_size": { "unit": "px", "size": 10 }
+        },
+        "elements": []
+      },
+      {
+        "id": "w-tiny-cta-btn",
+        "elType": "widget",
+        "isInner": false,
+        "widgetType": "button",
+        "settings": {
+          "text": "Go",
+          "size": "xs",
+          "typography_font_size": { "unit": "px", "size": 11 }
+        },
+        "elements": []
+      },
+      {
+        "id": "w-badge-tag-overlap-1",
+        "elType": "widget",
+        "isInner": false,
+        "widgetType": "heading",
+        "settings": {
+          "title": "Badge Label"
+        },
+        "elements": []
+      },
+      {
+        "id": "w-badge-tag-overlap-2",
+        "elType": "widget",
+        "isInner": false,
+        "widgetType": "heading",
+        "settings": {
+          "title": "Conflicting Label Overlay"
+        },
+        "elements": []
+      }
+    ]
+  }
+]

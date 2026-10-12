@@ -1,0 +1,3 @@
+@media (max-width: 1024px) {
+  [class*="elementor-element-vispan_"] * { max-width: 100% !important; box-sizing: border-box !important; min-width: 0 !important; }
+}

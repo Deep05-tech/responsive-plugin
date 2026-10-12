@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fixture 04 - Header Template (Non-Collapsing Nav)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #ffffff; }
+    .elementor { width: 100%; }
+    .elementor-element { position: relative; }
+
+    /* Planted Bug: Non-collapsing wide horizontal nav in a non-wrapping row that overflows mobile & tablet */
+    #hdr-main-container {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 24px;
+      width: 100%;
+      background: #1e293b;
+      color: #fff;
+    }
+    #hdr-site-logo {
+      flex: 0 0 160px;
+      width: 160px;
+    }
+    #hdr-nav-menu-widget {
+      flex: 0 0 auto;
+    }
+    .elementor-nav-menu {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      list-style: none;
+      gap: 24px;
+      white-space: nowrap;
+    }
+    .elementor-nav-menu a {
+      color: #f8fafc;
+      text-decoration: none;
+      font-size: 15px;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <div class="elementor elementor-104">
+    <header class="elementor-element elementor-element-populate" data-id="hdr-main-container" id="hdr-main-container">
+      <div class="elementor-element elementor-widget elementor-widget-image" data-id="hdr-site-logo" id="hdr-site-logo">
+        <div class="elementor-widget-container">
+          <svg width="150" height="36" style="background:#3b82f6; border-radius:4px; display:block;">
+            <text x="50%" y="50%" fill="#fff" dominant-baseline="middle" text-anchor="middle" font-size="14" font-weight="bold">SITE LOGO</text>
+          </svg>
+        </div>
+      </div>
+
+      <nav class="elementor-element elementor-widget elementor-widget-nav-menu" data-id="hdr-nav-menu-widget" id="hdr-nav-menu-widget">
+        <div class="elementor-widget-container">
+          <ul class="elementor-nav-menu">
+            <li><a href="#">Home</a></li>
+            <li><a href="#">Solutions & Services</a></li>
+            <li><a href="#">Case Studies & Insights</a></li>
+            <li><a href="#">Enterprise Platform</a></li>
+            <li><a href="#">Documentation</a></li>
+            <li><a href="#">Contact Us</a></li>
+          </ul>
+        </div>
+      </nav>
+    </header>
+  </div>
+</body>
+</html>

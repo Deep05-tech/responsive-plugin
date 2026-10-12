@@ -1,0 +1,47 @@
+[
+  {
+    "id": "sec-img-gallery-row",
+    "elType": "container",
+    "isInner": false,
+    "settings": {
+      "flex_direction": "row",
+      "flex_wrap": "nowrap",
+      "gap": { "unit": "px", "size": 20 }
+    },
+    "elements": [
+      {
+        "id": "img-card-1",
+        "elType": "widget",
+        "isInner": false,
+        "widgetType": "image",
+        "settings": {
+          "image": { "url": "https://picsum.photos/400/250" },
+          "width": { "unit": "px", "size": 320 }
+        },
+        "elements": []
+      },
+      {
+        "id": "img-card-2",
+        "elType": "widget",
+        "isInner": false,
+        "widgetType": "image",
+        "settings": {
+          "image": { "url": "https://picsum.photos/400/250" },
+          "width": { "unit": "px", "size": 320 }
+        },
+        "elements": []
+      },
+      {
+        "id": "img-card-3",
+        "elType": "widget",
+        "isInner": false,
+        "widgetType": "image",
+        "settings": {
+          "image": { "url": "https://picsum.photos/400/250" },
+          "width": { "unit": "px", "size": 320 }
+        },
+        "elements": []
+      }
+    ]
+  }
+]

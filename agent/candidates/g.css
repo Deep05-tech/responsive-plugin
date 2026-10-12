@@ -1,0 +1,5 @@
+html, body { overflow-x: clip; }
+@media (max-width: 1024px) {
+  [class*="vispan-reveal"] { transform: translateY(16px); }
+  [class*="vispan-reveal"].vispan-in-view { transform: none !important; }
+}

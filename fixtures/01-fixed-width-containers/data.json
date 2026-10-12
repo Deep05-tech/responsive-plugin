@@ -1,0 +1,68 @@
+[
+  {
+    "id": "sec-fixed-hero",
+    "elType": "section",
+    "isInner": false,
+    "settings": {
+      "layout": "boxed",
+      "content_width": { "unit": "px", "size": 850 }
+    },
+    "elements": [
+      {
+        "id": "col-fixed-main",
+        "elType": "column",
+        "isInner": false,
+        "settings": {
+          "_column_size": 100,
+          "_inline_size": null
+        },
+        "elements": [
+          {
+            "id": "w-heading-title",
+            "elType": "widget",
+            "isInner": false,
+            "widgetType": "heading",
+            "settings": {
+              "title": "Welcome to Fixed Width Container Test",
+              "header_size": "h1"
+            },
+            "elements": []
+          },
+          {
+            "id": "w-fixed-box-container",
+            "elType": "widget",
+            "isInner": false,
+            "widgetType": "html",
+            "settings": {
+              "html": "<div style='width: 600px; background: #3498db; color: #fff; padding: 20px; border-radius: 8px;'>Fixed 600px width card that overflows viewport on mobile (375px)</div>"
+            },
+            "elements": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "sec-fixed-promo",
+    "elType": "container",
+    "isInner": false,
+    "settings": {
+      "width": { "unit": "px", "size": 750 },
+      "min_height": { "unit": "px", "size": 200 },
+      "background_background": "classic",
+      "background_color": "#f1f2f6"
+    },
+    "elements": [
+      {
+        "id": "w-fixed-promo-card",
+        "elType": "widget",
+        "isInner": false,
+        "widgetType": "text-editor",
+        "settings": {
+          "editor": "<p>This is a fixed container set to 750px wide.</p>"
+        },
+        "elements": []
+      }
+    ]
+  }
+]

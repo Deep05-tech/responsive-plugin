@@ -1,0 +1,61 @@
+[
+  {
+    "id": "sec-clean-hero",
+    "elType": "container",
+    "isInner": false,
+    "settings": {
+      "flex_direction": "column",
+      "width": { "unit": "%", "size": 100 },
+      "padding": {
+        "unit": "px",
+        "top": "24",
+        "right": "16",
+        "bottom": "24",
+        "left": "16",
+        "isLinked": false
+      }
+    },
+    "elements": [
+      {
+        "id": "w-clean-heading",
+        "elType": "widget",
+        "isInner": false,
+        "widgetType": "heading",
+        "settings": {
+          "title": "Clean Responsive Page Example",
+          "typography_font_size": { "unit": "px", "size": 24 }
+        },
+        "elements": []
+      },
+      {
+        "id": "w-clean-text",
+        "elType": "widget",
+        "isInner": false,
+        "widgetType": "text-editor",
+        "settings": {
+          "editor": "<p>This page conforms to all responsive design checks with zero overflow, readable typography (>=16px), and accessible 48px touch targets.</p>",
+          "typography_font_size": { "unit": "px", "size": 16 }
+        },
+        "elements": []
+      },
+      {
+        "id": "w-clean-cta",
+        "elType": "widget",
+        "isInner": false,
+        "widgetType": "button",
+        "settings": {
+          "text": "Get Started",
+          "button_padding": {
+            "unit": "px",
+            "top": "14",
+            "right": "28",
+            "bottom": "14",
+            "left": "28",
+            "isLinked": false
+          }
+        },
+        "elements": []
+      }
+    ]
+  }
+]
