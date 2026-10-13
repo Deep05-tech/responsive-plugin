@@ -4,11 +4,21 @@
    ------------------------------------------------------------- */
 
 /* 1. Global Fluid Canvas & Max-Width Caps */
-html, body {
+html {
   width: 100% !important;
   min-width: 0 !important;
   max-width: 100% !important;
-  overflow-x: hidden !important;
+  overflow-x: hidden;
+  overflow-x: clip !important;
+}
+
+body {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow-x: hidden;
+  overflow-x: clip !important;
+  overflow-y: visible !important;
 }
 
 header.fixed-header,
@@ -27,6 +37,18 @@ footer.fixed-footer {
 @media (max-width: 1400px) {
   header.fixed-header {
     padding: 0 30px !important;
+    gap: 20px !important;
+  }
+  nav.header-nav {
+    width: auto !important;
+    display: flex !important;
+    gap: clamp(10px, 1.8vw, 24px) !important;
+    justify-content: center !important;
+  }
+  .header-cta-btn {
+    width: auto !important;
+    padding: 0 16px !important;
+    flex-shrink: 0 !important;
   }
   section.hero-section {
     padding: 50px 30px !important;
@@ -345,4 +367,64 @@ footer.fixed-footer {
   .clinic-header { height: auto !important; flex-direction: column !important; gap: 15px !important; padding: 15px !important; }
   .clinic-nav { width: 100% !important; flex-wrap: wrap !important; gap: 10px !important; justify-content: center !important; }
 }
+
+/* -------------------------------------------------------------
+   UNIVERSAL INVARIANTS: CONTAINER CONTAINMENT, REVEAL NORMALIZATION,
+   FOOTER GAP PREVENTION & FLUID FORM CARDS
+   ------------------------------------------------------------- */
+
+/* Universal Section & Container Fluid Containment */
+.elementor-section,
+.elementor-top-section,
+section {
+  display: flow-root !important;
+  height: auto !important;
+  min-height: fit-content !important;
+}
+
+.elementor-container,
+.elementor-row,
+.elementor-widget-wrap,
+.elementor-column-wrap {
+  height: auto !important;
+  min-height: fit-content !important;
+}
+
+/* Universal Card & Inquiry Form Fluidity */
+.vispan-inquiry-card,
+.bottom-form-card,
+.hero-inquiry-card,
+[class*="inquiry-card"] {
+  height: auto !important;
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+}
+
+/* Universal Footer Margin-Collapse Prevention */
+footer,
+.footer__area-8,
+.copyright__area-8,
+[class*="footer"] {
+  margin-top: 0 !important;
+  display: flow-root !important;
+}
+
+/* Universal Offcanvas Closed Drawer Normalization */
+.offcanvas:not(.show),
+.offcanvas__area:not(.show) {
+  display: none !important;
+}
+
+/* Universal Entrance Animation Normalization on Responsive Breakpoints */
+@media (max-width: 1200px) {
+  .vispan-reveal-left,
+  .vispan-reveal-right,
+  .vispan-reveal-up,
+  .vispan-reveal-fade {
+    transform: none !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+  }
+}
+
 

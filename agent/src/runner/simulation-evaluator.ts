@@ -65,6 +65,18 @@ export function evaluateSimulationVerdict(input: SimulationVerdictInput): Simula
   // 5. Desktop diff
   const desktopPassed = input.desktopDiffPassed;
 
+  // 6. Zero Element Collision / Overlap Invariant
+  const collisionIssues = input.simIssues.filter(
+    (i) => i.type === 'overlapping_elements' || i.type === 'layout_collision'
+  );
+  const noCollisions = collisionIssues.length === 0;
+
+  // 7. Zero Container Bleed, Scroll Truncation & Scroll Trap Invariant
+  const verticalBreachIssues = input.simIssues.filter(
+    (i) => i.type === 'container_bleed' || i.type === 'scroll_truncation' || i.type === 'scroll_trap'
+  );
+  const noVerticalBreaches = verticalBreachIssues.length === 0;
+
   const totalBaseP0 = input.baseMobileP0 + input.baseTabletP0 + input.baseDesktopP0;
   const totalSimP0 = input.simMobileP0 + input.simTabletP0 + input.simDesktopP0;
   const anyP0Drop = totalSimP0 < totalBaseP0;
@@ -75,7 +87,9 @@ export function evaluateSimulationVerdict(input: SimulationVerdictInput): Simula
     scrollWidthMobilePassed &&
     scrollWidthTabletPassed &&
     noNewIssues &&
-    desktopPassed;
+    desktopPassed &&
+    noCollisions &&
+    noVerticalBreaches;
 
   let verdict: 'VALIDATED' | 'PARTIAL' | 'FAILED' = 'FAILED';
   if (isValidated) {
@@ -108,6 +122,16 @@ export function evaluateSimulationVerdict(input: SimulationVerdictInput): Simula
   if (!desktopPassed) {
     reasons.push(
       `Desktop visual regression mismatch ${(input.desktopMismatchRatio * 100).toFixed(4)}% exceeds threshold ${(input.desktopThreshold * 100).toFixed(4)}%`
+    );
+  }
+  if (!noCollisions) {
+    reasons.push(
+      `${collisionIssues.length} element collision/overlap defect(s) detected in simulated layout (elements smashed together)`
+    );
+  }
+  if (!noVerticalBreaches) {
+    reasons.push(
+      `Vertical layout breach detected: ${verticalBreachIssues.length} container bleed or scroll truncation issue(s) remaining.`
     );
   }
 

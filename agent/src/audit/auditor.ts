@@ -20,6 +20,7 @@ export interface AuditOptions {
   browser?: Browser;
   elementorData?: any[];
   customCss?: string;
+  viewports?: ViewportConfig[];
 }
 
 export class PageAuditor {
@@ -94,14 +95,15 @@ export class PageAuditor {
     const browser = options.browser || (await chromium.launch({ headless: true }));
 
     try {
-      const viewportsResult: Partial<AuditReport['viewports']> = {};
+      const viewportsResult: Record<string, ViewportAuditResult> = {};
       const allIssues: Issue[] = [];
       const severityCounts: Record<SeverityTier, number> = { P0: 0, P1: 0, P2: 0 };
       const scopeCounts: Record<IssueScope, number> = { elementor: 0, theme: 0, wpadminbar: 0, unmapped: 0 };
       let patchableCount = 0;
       let unpatchableCount = 0;
 
-      for (const vp of VIEWPORTS) {
+      const targetViewports = options.viewports || VIEWPORTS;
+      for (const vp of targetViewports) {
         const result = await this.auditViewport(browser, url, vp, outputDir, options.customCss);
         viewportsResult[vp.name] = result;
 
@@ -319,6 +321,20 @@ export class PageAuditor {
 
       await page.evaluate(`(document.fonts ? document.fonts.ready : Promise.resolve())`);
 
+      // Measure early baseline before lazy scroll and fullpage screenshot alter layout
+      const earlyLayout = (await page.evaluate(`
+        (function() {
+          var w = Math.max(
+            document.documentElement.scrollWidth,
+            document.body ? document.body.scrollWidth : 0
+          );
+          return {
+            scrollWidth: w,
+            hasHorizontalOverflow: w > window.innerWidth + 1
+          };
+        })()
+      `)) as { scrollWidth: number; hasHorizontalOverflow: boolean };
+
       // Scroll full page for lazy load
       await page.evaluate(`
         new Promise(function(resolve) {
@@ -338,13 +354,14 @@ export class PageAuditor {
 
       // In-page layout evaluation with removal-based culprit detection and scope mapping
       const evaluationScript = `
-        (function(viewportName) {
+        (function(viewportName, earlyScrollWidth) {
           var issues = [];
           var winWidth = window.innerWidth;
-          var scrollWidth = Math.max(
+          var currentScrollWidth = Math.max(
             document.documentElement.scrollWidth,
             document.body ? document.body.scrollWidth : 0
           );
+          var scrollWidth = Math.max(currentScrollWidth, earlyScrollWidth || 0);
           var hasHorizontalOverflow = scrollWidth > winWidth + 1;
 
           var getElementorId = function(el) {
@@ -822,9 +839,19 @@ export class PageAuditor {
             }
           }
 
-          // 5. Overlapping sibling elements (P1 - Major)
-          var parentContainers = Array.prototype.slice.call(document.querySelectorAll('.elementor-widget-wrap, .elementor-container, [data-id]'));
-          var seenOverlapPairs = {};
+          // 5. Overlapping sibling elements & Smashed horizontal collisions (P1 - Major)
+          var containerSelectors = 'header, nav, main, section, [data-id], .elementor-widget-wrap, .elementor-container, .elementor-widget-html, [class*="header"], [class*="nav"], [class*="menu"], [class*="row"]';
+          var parentContainers = Array.prototype.slice.call(document.querySelectorAll(containerSelectors));
+
+          for (var idx = 0; idx < allElements.length; idx++) {
+            var elItem = allElements[idx];
+            var disp = window.getComputedStyle(elItem).display;
+            if ((disp === 'flex' || disp === 'inline-flex' || disp === 'grid') && parentContainers.indexOf(elItem) === -1) {
+              parentContainers.push(elItem);
+            }
+          }
+
+          var seenCollisionPairs = {};
 
           for (var p = 0; p < parentContainers.length; p++) {
             var parent = parentContainers[p];
@@ -835,44 +862,90 @@ export class PageAuditor {
               for (var j = i + 1; j < children.length; j++) {
                 var elA = children[i];
                 var elB = children[j];
-                var rectA = elA.getBoundingClientRect();
-                var rectB = elB.getBoundingClientRect();
+                var sA = window.getComputedStyle(elA);
+                var sB = window.getComputedStyle(elB);
+                if (sA.position === 'fixed' || sB.position === 'fixed') continue;
+                var isPositioned = sA.position === 'absolute' || sB.position === 'absolute';
 
-                var overlapW = Math.max(0, Math.min(rectA.right, rectB.right) - Math.max(rectA.left, rectB.left));
-                var overlapH = Math.max(0, Math.min(rectA.bottom, rectB.bottom) - Math.max(rectA.top, rectB.top));
-                var overlapArea = overlapW * overlapH;
-                var areaA = rectA.width * rectA.height;
-                var areaB = rectB.width * rectB.height;
-                var minArea = Math.min(areaA, areaB);
+                // Skip top-level column containers designed to touch side-by-side in a row
+                var isColA = elA.classList && (elA.classList.contains('elementor-column') || elA.classList.contains('elementor-top-column') || (typeof elA.className === 'string' && elA.className.indexOf('elementor-col-') !== -1));
+                var isColB = elB.classList && (elB.classList.contains('elementor-column') || elB.classList.contains('elementor-top-column') || (typeof elB.className === 'string' && elB.className.indexOf('elementor-col-') !== -1));
+                if (isColA && isColB) continue;
 
-                if (minArea > 50 && (overlapArea / minArea) > 0.1) {
-                  var idA = getElementorId(elA) || getElementSelector(elA);
-                  var idB = getElementorId(elB) || getElementSelector(elB);
-                  var pairKey = [idA, idB].sort().join(':::');
+                var rA = elA.getBoundingClientRect();
+                var rB = elB.getBoundingClientRect();
 
-                  if (!seenOverlapPairs[pairKey]) {
-                    seenOverlapPairs[pairKey] = true;
-                    var overlapPercent = Math.round((overlapArea / minArea) * 100);
-                    var elTarget = elB;
-                    var elementId = getElementorId(elTarget) || getElementorId(elA);
-                    var scope = getScope(elTarget);
+                // Order left-to-right
+                var isALeft = rA.left <= rB.left;
+                var leftEl = isALeft ? elA : elB;
+                var rightEl = isALeft ? elB : elA;
+                var rLeft = isALeft ? rA : rB;
+                var rRight = isALeft ? rB : rA;
 
-                    issues.push({
-                      type: 'overlapping_elements',
-                      severity: 'P1',
-                      elementId: elementId,
-                      scope: scope,
-                      selector: getElementSelector(elA) + ' & ' + getElementSelector(elB),
-                      outerHtmlSnippet: elTarget.outerHTML ? Array.from(elTarget.outerHTML).slice(0, 200).join('') : '',
-                      viewport: viewportName,
-                      message: 'Sibling elements overlap by ' + overlapPercent + '% of bounding area (' + Math.round(overlapArea) + 'px²)',
-                      details: {
-                        elementA: idA,
-                        elementB: idB,
-                        overlapPercentage: overlapPercent,
-                        overlapArea: overlapArea
+                var vOverlap = Math.min(rLeft.bottom, rRight.bottom) - Math.max(rLeft.top, rRight.top);
+                var minH = Math.min(rLeft.height, rRight.height);
+
+                if (vOverlap >= Math.min(12, minH * 0.5)) {
+                  var hOverlap = Math.max(0, Math.min(rLeft.right, rRight.right) - Math.max(rLeft.left, rRight.left));
+                  var overlapArea = hOverlap * vOverlap;
+                  var minArea = Math.min(rLeft.width * rLeft.height, rRight.width * rRight.height);
+                  var hGap = rRight.left - rLeft.right;
+
+                  var textA = (leftEl.innerText || '').trim();
+                  var textB = (rightEl.innerText || '').trim();
+                  var hasTextA = textA.length > 0;
+                  var hasTextB = textB.length > 0;
+
+                  var isOverlap = minArea > 50 && (overlapArea / minArea) > 0.05;
+                  var isSmashed = !isPositioned && hasTextA && hasTextB && hGap <= 2 && hGap >= -5 && rLeft.width > 20 && rRight.width > 20;
+
+                  if (isOverlap || isSmashed) {
+                    var idA = getElementorId(leftEl) || getElementSelector(leftEl);
+                    var idB = getElementorId(rightEl) || getElementSelector(rightEl);
+                    var pairKey = [idA, idB].sort().join(':::');
+
+                    if (!seenCollisionPairs[pairKey]) {
+                      seenCollisionPairs[pairKey] = true;
+                      var elementId = getElementorId(rightEl) || getElementorId(leftEl);
+                      var scope = getScope(rightEl);
+
+                      if (isOverlap) {
+                        var overlapPercent = Math.round((overlapArea / minArea) * 100);
+                        issues.push({
+                          type: 'overlapping_elements',
+                          severity: 'P1',
+                          elementId: elementId,
+                          scope: scope,
+                          selector: getElementSelector(leftEl) + ' & ' + getElementSelector(rightEl),
+                          outerHtmlSnippet: rightEl.outerHTML ? Array.from(rightEl.outerHTML).slice(0, 200).join('') : '',
+                          viewport: viewportName,
+                          message: 'Sibling elements overlap by ' + overlapPercent + '% of bounding area (' + Math.round(overlapArea) + 'px²)',
+                          details: {
+                            elementA: idA,
+                            elementB: idB,
+                            overlapPercentage: overlapPercent,
+                            overlapArea: overlapArea
+                          }
+                        });
+                      } else {
+                        issues.push({
+                          type: 'layout_collision',
+                          severity: 'P1',
+                          elementId: elementId,
+                          scope: scope,
+                          selector: getElementSelector(leftEl) + ' & ' + getElementSelector(rightEl),
+                          outerHtmlSnippet: rightEl.outerHTML ? Array.from(rightEl.outerHTML).slice(0, 200).join('') : '',
+                          viewport: viewportName,
+                          message: 'Sibling elements collided with 0px gap (' + textA.slice(0, 15) + '... and ' + textB.slice(0, 15) + '... are squished together without spacing)',
+                          details: {
+                            elementA: idA,
+                            elementB: idB,
+                            horizontalGap: Math.round(hGap),
+                            verticalOverlap: Math.round(vOverlap)
+                          }
+                        });
                       }
-                    });
+                    }
                   }
                 }
               }
@@ -946,20 +1019,243 @@ export class PageAuditor {
             }
           }
 
+          // 8. Container content bleed: child elements bleeding past styled/colored container bottoms
+          var styledContainers = Array.prototype.slice.call(document.querySelectorAll('section, .elementor-section, .elementor-top-section, [class*="section"], [class*="card"]'));
+          var seenBleedContainers = {};
+          for (var i = 0; i < styledContainers.length; i++) {
+            var container = styledContainers[i];
+            if (!isVisible(container)) continue;
+            var cStyle = window.getComputedStyle(container);
+            var hasBg = (cStyle.backgroundColor && cStyle.backgroundColor !== 'rgba(0, 0, 0, 0)' && cStyle.backgroundColor !== 'transparent') ||
+                        (cStyle.backgroundImage && cStyle.backgroundImage !== 'none');
+            if (!hasBg) continue;
+
+            var cRect = container.getBoundingClientRect();
+            if (cRect.height <= 0) continue;
+
+            var children = Array.prototype.slice.call(container.querySelectorAll('*'));
+            for (var ch = 0; ch < children.length; ch++) {
+              var child = children[ch];
+              if (!isVisible(child)) continue;
+              var chStyle = window.getComputedStyle(child);
+              if (chStyle.position === 'fixed') continue;
+
+              var chRect = child.getBoundingClientRect();
+              if (chRect.bottom > cRect.bottom + 8 && chRect.height > 10) {
+                var cId = getElementorId(container) || getElementSelector(container);
+                if (!seenBleedContainers[cId]) {
+                  seenBleedContainers[cId] = true;
+                  var elementId = getElementorId(child) || getElementorId(container);
+                  var scope = getScope(child);
+                  var bleedPx = Math.round(chRect.bottom - cRect.bottom);
+                  issues.push({
+                    type: 'container_bleed',
+                    severity: 'P0',
+                    elementId: elementId,
+                    scope: scope,
+                    selector: getElementSelector(child) + ' inside ' + getElementSelector(container),
+                    outerHtmlSnippet: child.outerHTML ? Array.from(child.outerHTML).slice(0, 200).join('') : '',
+                    viewport: viewportName,
+                    confirmedByRemoval: false,
+                    message: 'Child element overflows past styled container bottom by ' + bleedPx + 'px (causes visual cutoff / bleeding onto page background)',
+                    details: {
+                      container: cId,
+                      childSelector: getElementSelector(child),
+                      bleedPixels: bleedPx,
+                      childBottom: Math.round(chRect.bottom),
+                      containerBottom: Math.round(cRect.bottom)
+                    }
+                  });
+                }
+                break;
+              }
+            }
+          }
+
+          // 9. Vertical scroll truncation / cutoff: interactive elements or forms cut off
+          var docScrollHeight = Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0);
+          var interactives = Array.prototype.slice.call(document.querySelectorAll('button[type="submit"], input[type="submit"], .elementor-button, [class*="submit"], [class*="inquiry-btn"]'));
+          var seenTruncation = {};
+          for (var i = 0; i < interactives.length; i++) {
+            var btn = interactives[i];
+            if (!isVisible(btn)) continue;
+            var bRect = btn.getBoundingClientRect();
+            var absoluteBottom = bRect.bottom + window.scrollY;
+
+            // Check if absoluteBottom exceeds docScrollHeight
+            if (absoluteBottom > docScrollHeight + 8) {
+              var bId = getElementorId(btn) || getElementSelector(btn);
+              if (!seenTruncation[bId]) {
+                seenTruncation[bId] = true;
+                issues.push({
+                  type: 'scroll_truncation',
+                  severity: 'P0',
+                  elementId: getElementorId(btn),
+                  scope: getScope(btn),
+                  selector: getElementSelector(btn),
+                  outerHtmlSnippet: btn.outerHTML ? Array.from(btn.outerHTML).slice(0, 200).join('') : '',
+                  viewport: viewportName,
+                  confirmedByRemoval: false,
+                  message: 'Essential interactive element is positioned beyond reachable document scroll height (absoluteBottom: ' + Math.round(absoluteBottom) + 'px, scrollHeight: ' + Math.round(docScrollHeight) + 'px)',
+                  details: {
+                    absoluteBottom: Math.round(absoluteBottom),
+                    docScrollHeight: Math.round(docScrollHeight)
+                  }
+                });
+              }
+            }
+          }
+
+          // 10. Margin collapse void: empty gap between last content section and footer
+          var footerEl = document.querySelector('footer, .footer__area-8, [class*="footer"]');
+          if (footerEl && isVisible(footerEl)) {
+            var fRect = footerEl.getBoundingClientRect();
+            var prevSec = footerEl.previousElementSibling;
+            while (prevSec && (!isVisible(prevSec) || prevSec.tagName === 'SCRIPT' || prevSec.tagName === 'STYLE')) {
+              prevSec = prevSec.previousElementSibling;
+            }
+            if (prevSec) {
+              var pRect = prevSec.getBoundingClientRect();
+              var gap = Math.round(fRect.top - pRect.bottom);
+              if (gap > 25) {
+                issues.push({
+                  type: 'margin_collapse_void',
+                  severity: 'P1',
+                  elementId: getElementorId(footerEl),
+                  scope: 'theme',
+                  selector: getElementSelector(footerEl),
+                  outerHtmlSnippet: footerEl.outerHTML ? Array.from(footerEl.outerHTML).slice(0, 200).join('') : '',
+                  viewport: viewportName,
+                  confirmedByRemoval: false,
+                  message: 'Unstyled gap of ' + gap + 'px detected between content section and footer (caused by margin collapsing or missing containment)',
+                  details: {
+                    gapPixels: gap,
+                    previousSection: getElementSelector(prevSec),
+                    footerSelector: getElementSelector(footerEl)
+                  }
+                });
+              }
+            }
+          }
+
           return issues;
-        })('${vp.name}')
+        })('${vp.name}', ${earlyLayout.scrollWidth})
       `;
 
       const issues: Issue[] = await page.evaluate(evaluationScript);
+
+      const currentScrollWidth = (await page.evaluate(
+        'Math.max(document.documentElement.scrollWidth, document.body ? document.body.scrollWidth : 0)'
+      )) as number;
+      const reportedScrollWidth = Math.max(currentScrollWidth, earlyLayout.scrollWidth);
+
+      // Vertical Scroll Reachability & Trap Evaluation (Invariant)
+      const scrollMetrics = (await page.evaluate(`
+        (function() {
+          window.scrollTo(0, 999999);
+          var docH = Math.max(
+            document.documentElement.scrollHeight,
+            document.body ? document.body.scrollHeight : 0
+          );
+          var winH = window.innerHeight;
+          var maxScrollY = Math.max(0, docH - winH);
+          var currentScrollY = window.scrollY;
+          var bodyStyle = window.getComputedStyle(document.body);
+          var htmlStyle = window.getComputedStyle(document.documentElement);
+
+          var isSecondaryScrollTrap =
+            (bodyStyle.overflowY === 'auto' || bodyStyle.overflowY === 'scroll') &&
+            (htmlStyle.overflowY === 'auto' || htmlStyle.overflowY === 'scroll');
+
+          var footer = document.querySelector('footer, .footer__area-8, [class*="footer"]');
+          var fRect = footer ? footer.getBoundingClientRect() : null;
+          var footerVisibleAtBottom = Boolean(
+            fRect && fRect.top < winH && fRect.bottom > 0
+          );
+
+          window.scrollTo(0, 0);
+
+          return {
+            docScrollHeight: docH,
+            maxScrollY: maxScrollY,
+            finalScrollY: currentScrollY,
+            canScrollToBottom: currentScrollY >= maxScrollY - 15,
+            isSecondaryScrollTrap: isSecondaryScrollTrap,
+            footerVisibleAtBottom: footerVisibleAtBottom,
+            hasFooter: Boolean(footer),
+            bodyOverflowY: bodyStyle.overflowY,
+            bodyOverflowX: bodyStyle.overflowX
+          };
+        })()
+      `)) as {
+        docScrollHeight: number;
+        maxScrollY: number;
+        finalScrollY: number;
+        canScrollToBottom: boolean;
+        isSecondaryScrollTrap: boolean;
+        footerVisibleAtBottom: boolean;
+        hasFooter: boolean;
+        bodyOverflowY: string;
+        bodyOverflowX: string;
+      };
+
+      if (!scrollMetrics.canScrollToBottom && scrollMetrics.maxScrollY > 20) {
+        issues.push({
+          type: 'scroll_trap',
+          severity: 'P0',
+          elementId: null,
+          scope: 'theme',
+          selector: 'body',
+          viewport: vp.name,
+          confirmedByRemoval: false,
+          message: `Vertical scroll trapped before end of page: stopped at ${Math.round(scrollMetrics.finalScrollY)}px (expected max ${Math.round(scrollMetrics.maxScrollY)}px). Interactive elements or footer are unreachable.`,
+          details: scrollMetrics,
+        });
+      }
+
+      if (scrollMetrics.isSecondaryScrollTrap) {
+        issues.push({
+          type: 'scroll_trap',
+          severity: 'P1',
+          elementId: null,
+          scope: 'theme',
+          selector: 'body',
+          viewport: vp.name,
+          confirmedByRemoval: false,
+          message: `Secondary scroll container detected on <body> (computed overflow-y: ${scrollMetrics.bodyOverflowY}). Causes touch/wheel scrolling to get trapped in mobile/tablet views.`,
+          details: scrollMetrics,
+        });
+      }
+
+      if (scrollMetrics.hasFooter && !scrollMetrics.footerVisibleAtBottom && scrollMetrics.maxScrollY > 0) {
+        issues.push({
+          type: 'scroll_truncation',
+          severity: 'P0',
+          elementId: null,
+          scope: 'theme',
+          selector: 'footer',
+          viewport: vp.name,
+          confirmedByRemoval: false,
+          message: `Footer or end-of-page content is not reachable or visible within viewport when scrolled to maximum document height.`,
+          details: scrollMetrics,
+        });
+      }
 
       return {
         viewport: vp.name,
         width: vp.width,
         height: vp.height,
         screenshotPath,
-        hasHorizontalOverflow: issues.some((i) => i.type === 'horizontal_overflow' || i.type === 'multi_cause_overflow'),
-        scrollWidth: await page.evaluate('Math.max(document.documentElement.scrollWidth, document.body ? document.body.scrollWidth : 0)'),
+        hasHorizontalOverflow:
+          issues.some((i) => i.type === 'horizontal_overflow' || i.type === 'multi_cause_overflow') ||
+          reportedScrollWidth > vp.width + 1,
+        scrollWidth: reportedScrollWidth,
         innerWidth: vp.width,
+        canScrollToBottom: scrollMetrics.canScrollToBottom,
+        maxScrollY: scrollMetrics.maxScrollY,
+        finalScrollY: scrollMetrics.finalScrollY,
+        footerVisibleAtBottom: scrollMetrics.footerVisibleAtBottom,
+        isScrollTrapped: scrollMetrics.isSecondaryScrollTrap || !scrollMetrics.canScrollToBottom,
         issues,
       };
     } finally {

@@ -6,7 +6,7 @@ dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 export interface ViewportConfig {
-  name: 'mobile' | 'tablet' | 'desktop';
+  name: 'mobile' | 'tablet' | 'desktop' | 'tablet_pro' | 'surface_pro' | string;
   width: number;
   height: number;
 }
@@ -15,6 +15,14 @@ export const VIEWPORTS: ViewportConfig[] = [
   { name: 'mobile', width: 375, height: 812 },
   { name: 'tablet', width: 768, height: 1024 },
   { name: 'desktop', width: 1280, height: 800 },
+];
+
+export const EXTENDED_VIEWPORTS: ViewportConfig[] = [
+  { name: 'mobile', width: 375, height: 812 },
+  { name: 'tablet', width: 768, height: 1024 },
+  { name: 'desktop', width: 1280, height: 800 },
+  { name: 'tablet_pro', width: 1032, height: 1376 },
+  { name: 'surface_pro', width: 960, height: 1440 },
 ];
 
 export interface EraConfig {

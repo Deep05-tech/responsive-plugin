@@ -4,6 +4,8 @@ import path from 'path';
 import { applyPatchesLocally } from './patch/apply.js';
 import { validatePatches, PatchItem } from './patch/validator.js';
 import { ElementorElement } from './patch/tree.js';
+import { SectionMatcher } from './llm/section-matcher.js';
+import { ChatAgent } from './llm/chat-agent.js';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 8000;
 const FIXTURES_DIR = path.resolve(process.cwd(), '../fixtures');
@@ -334,10 +336,46 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // --- 8. API: /api/health ---
+  if (pathname === '/api/health' && method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok', version: '1.0.0', mode: 'hybrid-local' }));
+    return;
+  }
+
+  // --- 9. API: /api/chat ---
+  if (pathname === '/api/chat' && method === 'POST') {
+    try {
+      const body = await parseJsonBody(req);
+      const chatAgent = new ChatAgent();
+      const result = await chatAgent.handleConversation({
+        pageId: body.pageId,
+        message: body.message,
+        history: body.history,
+        imageBase64: body.imageBase64,
+        elementorData: body.elementorData,
+        pageContext: body.pageContext,
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, ...result }));
+      return;
+    } catch (err: any) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: err.message }));
+      return;
+    }
+  }
+
   res.writeHead(404, { 'Content-Type': 'text/plain' });
   res.end('Not found');
 });
 
-server.listen(PORT, () => {
-  console.log(`🌐 ERA Bridge Server running on http://localhost:${PORT} (ERA_ENABLE_WRITES=${ERA_ENABLE_WRITES})`);
-});
+export function startServer(port = PORT) {
+  return server.listen(port, () => {
+    console.log(`🌐 ERA Hybrid Agent Server running on http://localhost:${port} (ERA_ENABLE_WRITES=${ERA_ENABLE_WRITES})`);
+  });
+}
+
+if (process.argv[1] && (process.argv[1].endsWith('server.ts') || process.argv[1].endsWith('server.js'))) {
+  startServer(PORT);
+}

@@ -6,8 +6,13 @@ export type IssueType =
   | 'small_font_size'
   | 'small_tap_target'
   | 'overlapping_elements'
+  | 'layout_collision'
   | 'image_wider_than_container'
-  | 'fixed_pixel_width_overflow';
+  | 'fixed_pixel_width_overflow'
+  | 'container_bleed'
+  | 'scroll_truncation'
+  | 'scroll_trap'
+  | 'margin_collapse_void';
 
 export type SeverityTier = 'P0' | 'P1' | 'P2';
 
@@ -23,7 +28,7 @@ export interface Issue {
   elementId: string | null;
   scope?: IssueScope;
   selector: string;
-  viewport: 'mobile' | 'tablet' | 'desktop';
+  viewport: 'mobile' | 'tablet' | 'desktop' | string;
   message: string;
   details: Record<string, any>;
   patchable?: boolean;
@@ -34,7 +39,7 @@ export interface Issue {
 }
 
 export interface ViewportAuditResult {
-  viewport: 'mobile' | 'tablet' | 'desktop';
+  viewport: 'mobile' | 'tablet' | 'desktop' | string;
   width: number;
   height: number;
   screenshotPath: string;
@@ -42,6 +47,11 @@ export interface ViewportAuditResult {
   scrollWidth: number;
   innerWidth: number;
   issues: Issue[];
+  canScrollToBottom?: boolean;
+  maxScrollY?: number;
+  finalScrollY?: number;
+  footerVisibleAtBottom?: boolean;
+  isScrollTrapped?: boolean;
 }
 
 export interface ElementIssuesGroup {
@@ -78,6 +88,7 @@ export interface AuditReport {
     mobile: ViewportAuditResult;
     tablet: ViewportAuditResult;
     desktop: ViewportAuditResult;
+    [key: string]: ViewportAuditResult;
   };
   totalIssues: number;
   summary: AuditSummary;

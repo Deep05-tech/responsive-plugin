@@ -10,7 +10,7 @@ import { LayoutAnalyst } from './llm/analyst.js';
 import { validatePatches } from './patch/validator.js';
 import { LoopRunner } from './runner/loop.js';
 import { BatchRunner } from './runner/batch.js';
-import { loadConfig } from './config/index.js';
+import { loadConfig, EXTENDED_VIEWPORTS } from './config/index.js';
 import { ElementorElement } from './patch/tree.js';
 import { checkDesktopRegression } from './runner/regression.js';
 import { runDiagnosis, runInnerDiagnosis, checkTabletAnimations, getRemainingP0NodeDetails } from './audit/diagnose.js';
@@ -33,6 +33,7 @@ program
   .description('Audit Elementor pages/templates at mobile (375px), tablet (768px), and desktop (1280px) viewports (Read-Only)')
   .requiredOption('-p, --page <page>', 'Page ID, Target URL, or "all" to audit all pages')
   .option('-o, --output <dir>', 'Output directory for reports and screenshots')
+  .option('-e, --extended', 'Audit extended viewports including iPad Pro 13 (1032x1376) and Surface Pro 10 (960x1440)')
   .option('--limit <limit>', 'Limit number of pages to audit in batch mode (default: 20)', '20')
   .option('--mode <mode>', 'Audit mode: "raw" or "settled" (default: "settled")', 'settled')
   .action(async (options) => {
@@ -189,11 +190,14 @@ program
     }
 
     try {
-      console.log(`🌐 Auditing target: ${targetUrl} across 3 viewports (375px, 768px, 1280px)...`);
+      const targetVps = options.extended ? EXTENDED_VIEWPORTS : undefined;
+      const vpCount = targetVps ? targetVps.length : 3;
+      console.log(`🌐 Auditing target: ${targetUrl} across ${vpCount} viewports${options.extended ? ' (Extended Devices Mode: Mobile, iPad Mini, Desktop, iPad Pro 13, Surface Pro 10)' : ' (375px, 768px, 1280px)'}...`);
       const report = await auditor.auditPage({
         pageId,
         url: targetUrl,
         outputDir: options.output,
+        viewports: targetVps,
       });
 
       const outDir = options.output || path.join(config.outputDir, String(pageId));
@@ -205,9 +209,12 @@ program
       console.log(`• Summary Block:`);
       console.log(JSON.stringify(report.summary, null, 2));
       console.log(`\n• Viewport Breakdown:`);
-      console.log(`  - Mobile  (375px) : ${report.viewports.mobile.issues.length} issues ${report.viewports.mobile.hasHorizontalOverflow ? '(⚠️ Horizontal Overflow)' : ''}`);
-      console.log(`  - Tablet  (768px) : ${report.viewports.tablet.issues.length} issues ${report.viewports.tablet.hasHorizontalOverflow ? '(⚠️ Horizontal Overflow)' : ''}`);
-      console.log(`  - Desktop (1280px): ${report.viewports.desktop.issues.length} issues ${report.viewports.desktop.hasHorizontalOverflow ? '(⚠️ Horizontal Overflow)' : ''}`);
+      for (const [vpKey, vpData] of Object.entries(report.viewports)) {
+        if (!vpData) continue;
+        const ovTag = vpData.hasHorizontalOverflow ? '(⚠️ Horizontal Overflow)' : '(✅ 0 Overflow)';
+        const scrollTag = vpData.canScrollToBottom !== false ? '(✅ Full Scroll Reachable)' : '(⚠️ Scroll Trapped)';
+        console.log(`  - ${vpKey.padEnd(12)} (${vpData.width}x${vpData.height}): ${vpData.issues.length} issues ${ovTag} ${scrollTag}`);
+      }
       console.log(`\n• Affected Element Groups: ${Object.keys(report.issuesByElementId).length}`);
 
       for (const [elKey, group] of Object.entries(report.issuesByElementId)) {
@@ -1168,6 +1175,60 @@ program
     } catch (err: any) {
       console.error(`\n❌ ERA QC failed: ${err.message}\n`);
       process.exit(1);
+    }
+  });
+
+// Command: era serve [-p, --port <port>]
+program
+  .command('serve')
+  .description('Start the local ERA Hybrid Agent server daemon for the floating chatbot')
+  .option('-p, --port <port>', 'Port number to listen on', '8000')
+  .action(async (options) => {
+    const port = parseInt(options.port || '8000', 10);
+    const { startServer } = await import('./server.js');
+    startServer(port);
+  });
+
+// Command: era chat -p <pageId> [-m <message>] [-i <imagePath>] [--json]
+program
+  .command('chat')
+  .description('Targeted section-level responsive fix via text prompt or screenshot')
+  .requiredOption('-p, --page <page>', 'Page ID to target')
+  .option('-m, --message <message>', 'User request or description of broken section')
+  .option('-i, --image <path>', 'Path to screenshot of the broken section')
+  .option('--json', 'Output result strictly as JSON')
+  .action(async (options) => {
+    const { ChatAgent } = await import('./llm/chat-agent.js');
+    let imageBase64: string | undefined;
+    if (options.image && fs.existsSync(options.image)) {
+      imageBase64 = fs.readFileSync(options.image).toString('base64');
+    }
+    const chatAgent = new ChatAgent();
+    if (!options.json) {
+      console.log(`🔍 Analyzing Page #${options.page} with ERA Page Architect...`);
+    }
+    const result = await chatAgent.handleConversation({
+      pageId: options.page,
+      message: options.message,
+      imageBase64,
+    });
+    if (options.json) {
+      console.log(JSON.stringify({ success: true, ...result }));
+      return;
+    }
+    console.log('\n======================================================');
+    console.log(`🎯 RESPONSE: ${result.sectionTitle || 'Page Assessment'} (ID: ${result.matchedElementId || 'page'})`);
+    console.log('======================================================');
+    if (result.detectedIssues && result.detectedIssues.length) {
+      console.log(`• Detected Issues / Actions:`);
+      for (const iss of result.detectedIssues) {
+        console.log(`  - ⚠️ ${iss}`);
+      }
+    }
+    console.log(`\n• Solution Explanation:\n  ${result.reply || result.explanation}`);
+    if (result.scopedCss) {
+      console.log(`\n• Scoped CSS Generated: (${result.scopedCss.length} characters)`);
+      console.log(result.scopedCss.slice(0, 300) + '...\n');
     }
   });
 

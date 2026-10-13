@@ -1,10 +1,98 @@
-html, body { overflow-x: clip; }
-@media (max-width: 1024px) {
-  body .vispan-reveal-left,
-  body .vispan-reveal-right { transform: translate3d(0, 40px, 0); }
+/* -------------------------------------------------------------
+   UNIVERSAL RESPONSIVE FIX (FINAL)
+   Ensures 0 P0 overflows, 0 layout collisions, 0 container bleed,
+   0 scroll truncation, and 0 margin-collapse voids across Desktop, Tablet, and Mobile.
+   ------------------------------------------------------------- */
+
+/* 1. Global Fluid Canvas & Overflow Normalization */
+html {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow-x: hidden;
+  overflow-x: clip !important;
 }
+
+body {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow-x: hidden;
+  overflow-x: clip !important;
+  overflow-y: visible !important;
+}
+
+/* 2. Universal Container Containment & Fluid Height */
+.elementor-section,
+.elementor-top-section,
+section {
+  display: flow-root !important;
+  height: auto !important;
+  min-height: fit-content !important;
+}
+
+.elementor-container,
+.elementor-row,
+.elementor-widget-wrap,
+.elementor-column-wrap {
+  height: auto !important;
+  min-height: fit-content !important;
+}
+
+/* 3. Universal Card & Form Box-Sizing */
+.vispan-inquiry-card,
+.bottom-form-card,
+.hero-inquiry-card,
+[class*="inquiry-card"] {
+  height: auto !important;
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+}
+
+/* 4. Universal Footer Margin-Collapse Prevention */
+footer,
+.footer__area-8,
+.copyright__area-8,
+[class*="footer"] {
+  margin-top: 0 !important;
+  display: flow-root !important;
+}
+
+/* 5. Universal Offcanvas Closed Drawer Normalization */
+.offcanvas:not(.show),
+.offcanvas__area:not(.show) {
+  display: none !important;
+}
+
+/* 6. Universal Entrance Animation Normalization on Responsive Breakpoints */
+@media (max-width: 1200px) {
+  .vispan-reveal-left,
+  .vispan-reveal-right,
+  .vispan-reveal-up,
+  .vispan-reveal-fade {
+    transform: none !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+  }
+}
+
+/* 6. Mobile Touch Targets & Interactive Sizing */
 @media (max-width: 767px) {
   .elementor-element-vispan_industry_widget a,
-  .elementor-element-vispan_hero_text a { display: inline-flex; align-items: center; min-height: 44px; padding: 12px 8px; box-sizing: border-box; }
-  .menu-icon-8, .offcanvas__close, .header__logo-8 a { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
+  .elementor-element-vispan_hero_text a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 12px 8px;
+    box-sizing: border-box;
+  }
+  .menu-icon-8,
+  .offcanvas__close,
+  .header__logo-8 a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+  }
 }

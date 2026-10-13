@@ -24,6 +24,7 @@ if ( ! defined( 'ERA_ENABLE_WRITES' ) ) {
 
 require_once ERA_BRIDGE_PLUGIN_DIR . 'includes/class-era-rest-api.php';
 require_once ERA_BRIDGE_PLUGIN_DIR . 'includes/class-era-admin.php';
+require_once ERA_BRIDGE_PLUGIN_DIR . 'includes/class-era-chat-widget.php';
 
 add_action( 'rest_api_init', function () {
 	$api = new ERA_REST_API();
@@ -34,3 +35,6 @@ if ( is_admin() ) {
 	$admin = new ERA_Admin();
 	$admin->init();
 }
+
+$chat_widget = new ERA_Chat_Widget();
+$chat_widget->init();

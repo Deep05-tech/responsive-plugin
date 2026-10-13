@@ -10,6 +10,8 @@ output/
 **/output/
 backups/
 **/backups/
+scratch/
+**/scratch/
 *.log
 .vite/
 .system_generated/
