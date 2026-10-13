@@ -64,7 +64,7 @@ export function loadConfig(): EraConfig {
     stagingBasicAuthUser: process.env.STAGING_BASIC_AUTH_USER || '',
     stagingBasicAuthPass: process.env.STAGING_BASIC_AUTH_PASS || '',
     openaiApiKey: process.env.OPENAI_API_KEY || '',
-    openaiModel: process.env.OPENAI_MODEL || 'gpt-5.4',
+    openaiModel: process.env.OPENAI_MODEL || 'gpt-5.4-mini',
     productionBlocklist,
     allowHiding: process.env.ALLOW_HIDING === 'true',
     maxIterations: parseInt(process.env.MAX_ITERATIONS || '3', 10),
