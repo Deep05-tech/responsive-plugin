@@ -24,7 +24,6 @@ export function generateScopedSectionCss(options: ScopedStyleOptions): string {
 /* 1. Fluid Container Containment */
 .elementor-element-${cleanId},
 [data-id="${cleanId}"] {
-  display: flow-root !important;
   height: auto !important;
   min-height: fit-content !important;
   box-sizing: border-box !important;

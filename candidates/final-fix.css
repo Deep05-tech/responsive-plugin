@@ -26,9 +26,10 @@ body {
 .elementor-section,
 .elementor-top-section,
 section {
-  display: flow-root !important;
   height: auto !important;
   min-height: fit-content !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
 }
 
 .elementor-container,
@@ -55,7 +56,7 @@ footer,
 .copyright__area-8,
 [class*="footer"] {
   margin-top: 0 !important;
-  display: flow-root !important;
+  height: auto !important;
 }
 
 /* 5. Universal Offcanvas Closed Drawer Normalization */

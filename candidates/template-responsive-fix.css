@@ -51,17 +51,28 @@ footer.fixed-footer {
     flex-shrink: 0 !important;
   }
   section.hero-section {
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: flex-start !important;
     padding: 50px 30px !important;
+    box-sizing: border-box !important;
+    max-width: 100% !important;
   }
   .hero-content {
     width: 58% !important;
+    max-width: 58% !important;
   }
   .hero-metrics {
     width: 100% !important;
+    display: flex !important;
+    flex-direction: row !important;
   }
   .hero-inquiry-card {
     width: 38% !important;
-    min-width: 380px !important;
+    max-width: 460px !important;
+    min-width: 360px !important;
+    margin: 0 !important;
   }
   .form-group input,
   .form-group select,
@@ -377,9 +388,10 @@ footer.fixed-footer {
 .elementor-section,
 .elementor-top-section,
 section {
-  display: flow-root !important;
   height: auto !important;
   min-height: fit-content !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
 }
 
 .elementor-container,
@@ -406,7 +418,7 @@ footer,
 .copyright__area-8,
 [class*="footer"] {
   margin-top: 0 !important;
-  display: flow-root !important;
+  height: auto !important;
 }
 
 /* Universal Offcanvas Closed Drawer Normalization */

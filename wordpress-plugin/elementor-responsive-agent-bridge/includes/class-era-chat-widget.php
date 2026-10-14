@@ -1383,7 +1383,7 @@ class ERA_Chat_Widget {
 			// Generate Scoped CSS for the section
 			$clean_id = preg_replace( '/[^a-zA-Z0-9_-]/', '', $matched_id );
 			$scoped_css = "/* Scoped Responsive Fix: {$section_title} ({$clean_id}) */\n" .
-				".elementor-element-{$clean_id}, [data-id=\"{$clean_id}\"] { display: flow-root !important; height: auto !important; min-height: fit-content !important; box-sizing: border-box !important; max-width: 100% !important; overflow-x: clip !important; }\n" .
+				".elementor-element-{$clean_id}, [data-id=\"{$clean_id}\"] { height: auto !important; min-height: fit-content !important; box-sizing: border-box !important; max-width: 100% !important; overflow-x: clip !important; }\n" .
 				".elementor-element-{$clean_id} .elementor-container, .elementor-element-{$clean_id} .elementor-widget-wrap { height: auto !important; min-height: fit-content !important; max-width: 100% !important; box-sizing: border-box !important; }\n" .
 				".elementor-element-{$clean_id} input, .elementor-element-{$clean_id} select, .elementor-element-{$clean_id} textarea, .elementor-element-{$clean_id} button { max-width: 100% !important; box-sizing: border-box !important; }\n" .
 				"@media (max-width: 1200px) { .elementor-element-{$clean_id} [class*=\"reveal\"], .elementor-element-{$clean_id} [class*=\"animate\"] { transform: none !important; opacity: 1 !important; visibility: visible !important; } }\n" .
