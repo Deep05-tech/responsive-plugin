@@ -110,22 +110,37 @@ export function generateScopedSectionCss(options: ScopedStyleOptions): string {
   .elementor-element-${cleanId} a,
   .elementor-element-${cleanId} button,
   .elementor-element-${cleanId} input[type="submit"] {
-    min-height: 44px;
+    min-height: 40px;
     box-sizing: border-box;
-  }
-  .elementor-element-${cleanId} nav,
-  .elementor-element-${cleanId} [class*="nav"] {
-    display: flex !important;
-    flex-wrap: wrap !important;
-    gap: 8px !important;
-    justify-content: center !important;
   }
   .elementor-element-${cleanId} header,
   .elementor-element-${cleanId} [class*="header"] {
+    position: relative !important;
     height: auto !important;
-    flex-direction: column !important;
+    min-height: unset !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    padding: 12px 16px 8px !important;
+  }
+  .elementor-element-${cleanId} nav,
+  .elementor-element-${cleanId} [class*="nav"] {
+    width: 100% !important;
+    order: 3 !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
     gap: 12px !important;
-    padding: 16px 20px !important;
+    justify-content: flex-start !important;
+    padding-top: 8px !important;
+  }
+  .elementor-element-${cleanId} [class*="metric"] {
+    height: auto !important;
+    min-height: fit-content !important;
+    box-sizing: border-box !important;
   }
   .elementor-element-${cleanId} [class$="-section"],
   .elementor-element-${cleanId} [class$="-grid"] {
