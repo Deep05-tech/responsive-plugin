@@ -1196,12 +1196,34 @@ program
   .requiredOption('-p, --page <page>', 'Page ID to target')
   .option('-m, --message <message>', 'User request or description of broken section')
   .option('-i, --image <path>', 'Path to screenshot of the broken section')
+  .option('--history <jsonOrPath>', 'JSON string or path to history JSON file')
+  .option('--context <jsonOrPath>', 'JSON string or path to context JSON file')
   .option('--json', 'Output result strictly as JSON')
   .action(async (options) => {
     const { ChatAgent } = await import('./llm/chat-agent.js');
     let imageBase64: string | undefined;
     if (options.image && fs.existsSync(options.image)) {
       imageBase64 = fs.readFileSync(options.image).toString('base64');
+    }
+    let history: any[] | undefined;
+    if (options.history) {
+      try {
+        if (fs.existsSync(options.history)) {
+          history = JSON.parse(fs.readFileSync(options.history, 'utf8'));
+        } else {
+          history = JSON.parse(options.history);
+        }
+      } catch (e) {}
+    }
+    let pageContext: any | undefined;
+    if (options.context) {
+      try {
+        if (fs.existsSync(options.context)) {
+          pageContext = JSON.parse(fs.readFileSync(options.context, 'utf8'));
+        } else {
+          pageContext = JSON.parse(options.context);
+        }
+      } catch (e) {}
     }
     const chatAgent = new ChatAgent();
     if (!options.json) {
@@ -1210,6 +1232,8 @@ program
     const result = await chatAgent.handleConversation({
       pageId: options.page,
       message: options.message,
+      history,
+      pageContext,
       imageBase64,
     });
     if (options.json) {

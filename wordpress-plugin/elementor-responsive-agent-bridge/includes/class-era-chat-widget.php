@@ -958,6 +958,37 @@ class ERA_Chat_Widget {
 						}
 
 						var data = res.data;
+
+						// Handle Undo / Restore snapshot action
+						if (data.actionType === 'restore' || (data.action && data.action.actionType === 'restore') || data.targetBackupKey) {
+							var backupKey = data.targetBackupKey || (data.action ? data.action.targetBackupKey : '');
+							var replyText = data.reply || data.explanation || 'I can restore your previous page state.';
+							var renderedReply = eraRenderMarkdown(replyText);
+							var uniqueRestoreBtnId = 'btn-restore-' + Date.now();
+
+							var restoreCardHtml = renderedReply +
+								'<div class="era-card-fix" style="margin-top:10px; background:#eff6ff; border:1px solid #bfdbfe;">' +
+								'<div style="font-size:12px;color:#1e3a8a;margin-bottom:6px;">⏮️ <strong>Restore Point:</strong> <code>' + eraEscapeHtml(backupKey) + '</code></div>' +
+								'<p style="margin:0 0 10px 0;font-size:12px;color:#3b82f6;">Reverting will restore the Elementor layout and copy back to this safety snapshot.</p>' +
+								'<button type="button" class="era-btn-apply-section" id="' + uniqueRestoreBtnId + '" style="background:#0284c7;border-color:#0284c7;">' +
+								'⏮️ Confirm & Restore Snapshot' +
+								'</button>' +
+								'</div>';
+
+							loadingMsg.innerHTML = restoreCardHtml;
+							var hist = eraGetHistory();
+							hist.push({ sender: 'agent', content: restoreCardHtml, isHtml: true, time: Date.now() });
+							eraSaveHistory(hist);
+
+							var rBtn = document.getElementById(uniqueRestoreBtnId);
+							if (rBtn) {
+								rBtn.onclick = function() {
+									eraRestoreBackup(backupKey, rBtn);
+								};
+							}
+							return;
+						}
+
 						var hasAction = !!(data.hasAction || data.matchedElementId || (data.action && data.action.targetSectionId));
 
 						if (hasAction) {
@@ -1244,6 +1275,15 @@ class ERA_Chat_Widget {
 		$current_raw = get_post_meta( $page_id, '_elementor_data', true );
 		$parsed_data = ! empty( $current_raw ) ? json_decode( $current_raw, true ) : null;
 
+		$backups_list = get_post_meta( $page_id, '_era_backups_list', true );
+		if ( ! is_array( $backups_list ) ) {
+			$backups_list = array();
+		}
+		if ( ! is_array( $page_context ) ) {
+			$page_context = array();
+		}
+		$page_context['recentBackups'] = array_slice( $backups_list, -5 );
+
 		$payload = array(
 			'pageId'        => $page_id,
 			'message'       => $message,
@@ -1278,39 +1318,57 @@ class ERA_Chat_Widget {
 		$temp_img_file = '';
 		if ( ! empty( $image_base64 ) ) {
 			$upload_dir = wp_upload_dir();
-			$temp_img_file = $upload_dir['basedir'] . '/era-chat-tmp-' . time() . '.png';
+			$temp_img_file = $upload_dir['basedir'] . '/era-chat-tmp-' . time() . '-' . wp_rand( 100, 999 ) . '.png';
 			$data_clean = preg_replace( '#^data:image/\w+;base64,#i', '', $image_base64 );
 			@file_put_contents( $temp_img_file, base64_decode( $data_clean ) );
 		}
 
+		$temp_hist_file = '';
+		if ( ! empty( $history ) ) {
+			$upload_dir = wp_upload_dir();
+			$temp_hist_file = $upload_dir['basedir'] . '/era-chat-hist-' . time() . '-' . wp_rand( 100, 999 ) . '.json';
+			@file_put_contents( $temp_hist_file, wp_json_encode( $history ) );
+		}
+
+		$temp_ctx_file = '';
+		if ( ! empty( $page_context ) ) {
+			$upload_dir = wp_upload_dir();
+			$temp_ctx_file = $upload_dir['basedir'] . '/era-chat-ctx-' . time() . '-' . wp_rand( 100, 999 ) . '.json';
+			@file_put_contents( $temp_ctx_file, wp_json_encode( $page_context ) );
+		}
+
 		$cmd = sprintf(
-			'export PATH=%s:"$PATH:/usr/local/bin:/usr/bin:/bin" && cd %s && %s %s chat -p %d %s %s --json 2>&1',
+			'export PATH=%s:"$PATH:/usr/local/bin:/usr/bin:/bin" && cd %s && %s %s chat -p %d %s %s %s %s --json 2>&1',
 			escapeshellarg( $node_dir ),
 			escapeshellarg( $agent_dir ),
 			escapeshellarg( $node_bin ),
 			escapeshellarg( $cli_path ),
 			$page_id,
 			$message ? '-m ' . escapeshellarg( $message ) : '',
-			$temp_img_file ? '-i ' . escapeshellarg( $temp_img_file ) : ''
+			$temp_img_file ? '-i ' . escapeshellarg( $temp_img_file ) : '',
+			$temp_hist_file ? '--history ' . escapeshellarg( $temp_hist_file ) : '',
+			$temp_ctx_file ? '--context ' . escapeshellarg( $temp_ctx_file ) : ''
 		);
 
 		$output = shell_exec( $cmd );
 		if ( $temp_img_file && file_exists( $temp_img_file ) ) {
 			@unlink( $temp_img_file );
 		}
+		if ( $temp_hist_file && file_exists( $temp_hist_file ) ) {
+			@unlink( $temp_hist_file );
+		}
+		if ( $temp_ctx_file && file_exists( $temp_ctx_file ) ) {
+			@unlink( $temp_ctx_file );
+		}
 
 		// 1. Try parsing direct JSON output from CLI
 		$cli_json = json_decode( trim( (string) $output ), true );
-		if ( is_array( $cli_json ) && ! empty( $cli_json['matchedElementId'] ) ) {
-			wp_send_json_success( array(
-				'matchedElementId' => $cli_json['matchedElementId'],
-				'sectionTitle'     => ! empty( $cli_json['sectionTitle'] ) ? $cli_json['sectionTitle'] : 'Section',
-				'actionType'       => ! empty( $cli_json['actionType'] ) ? $cli_json['actionType'] : ( ! empty( $cli_json['contentPatches'] ) ? 'content' : 'style' ),
-				'detectedIssues'   => ! empty( $cli_json['detectedIssues'] ) ? $cli_json['detectedIssues'] : array(),
-				'explanation'      => ! empty( $cli_json['explanation'] ) ? $cli_json['explanation'] : '',
-				'scopedCss'        => ! empty( $cli_json['scopedCss'] ) ? $cli_json['scopedCss'] : '',
-				'contentPatches'   => ! empty( $cli_json['contentPatches'] ) ? $cli_json['contentPatches'] : array(),
-			) );
+		if ( is_array( $cli_json ) ) {
+			if ( ! empty( $cli_json['success'] ) ) {
+				wp_send_json_success( $cli_json );
+			} elseif ( isset( $cli_json['reply'] ) || isset( $cli_json['explanation'] ) || ! empty( $cli_json['matchedElementId'] ) ) {
+				wp_send_json_success( $cli_json );
+			}
 		}
 
 		// 2. Parse CLI output regex fallback for matched section
@@ -1342,9 +1400,9 @@ class ERA_Chat_Widget {
 			) );
 		}
 
-		wp_send_json_success( array(
-			'reply' => nl2br( esc_html( $output ) ),
-		) );
+		wp_send_json_error( array(
+			'message' => 'Agent CLI failed to process the request: ' . wp_strip_all_tags( (string) $output ),
+		), 500 );
 	}
 
 	/**

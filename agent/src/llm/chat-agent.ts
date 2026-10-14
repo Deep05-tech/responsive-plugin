@@ -15,6 +15,8 @@ export interface PageContext {
   activePageId?: number | string;
   activeScopedCss?: string[];
   semanticClasses?: string[];
+  recentBackups?: Array<{ key: string; timestamp?: number; date_gmt?: string }>;
+  lastAppliedAction?: any;
 }
 
 export interface ChatAgentRequest {
@@ -27,9 +29,10 @@ export interface ChatAgentRequest {
 }
 
 export interface ProposedAction {
-  targetSectionId: string;
-  sectionTitle: string;
-  actionType: 'content' | 'style' | 'both';
+  targetSectionId?: string;
+  sectionTitle?: string;
+  actionType: 'content' | 'style' | 'both' | 'restore';
+  targetBackupKey?: string;
   actionSummary: string;
   detectedIssues?: string[];
   contentPatches?: ContentPatch[];
@@ -44,10 +47,11 @@ export interface ChatAgentResponse {
   reply: string;
   hasAction: boolean;
   action?: ProposedAction;
+  targetBackupKey?: string;
   // Backward compatibility fields for bridge:
   matchedElementId?: string;
   sectionTitle?: string;
-  actionType?: 'content' | 'style' | 'both';
+  actionType?: 'content' | 'style' | 'both' | 'restore';
   detectedIssues?: string[];
   explanation?: string;
   scopedCss?: string;
@@ -214,6 +218,17 @@ export class ChatAgent {
   ): Promise<ChatAgentResponse> {
     if (!this.client) throw new Error('OpenAI client not initialized');
 
+    const backups = request.pageContext?.recentBackups || [];
+    let backupsSummary = 'AVAILABLE PAGE BACKUPS / RESTORE POINTS:\n';
+    if (backups.length > 0) {
+      for (const b of backups) {
+        backupsSummary += `- Snapshot Key: "${b.key}" (Date/Time: ${b.date_gmt || (b.timestamp ? new Date(b.timestamp * 1000).toISOString() : 'Unknown')})\n`;
+      }
+      backupsSummary += `Note: If user asks to undo, revert, or restore previous changes, select the latest snapshot key or the one requested.`;
+    } else {
+      backupsSummary += 'None currently recorded.';
+    }
+
     const systemPrompt = `You are ERA (Elementor Responsive & Design Architect), a world-class AI frontend engineering pair-programmer embedded directly in the user's WordPress page.
 You are talking directly to the user who is editing/reviewing this page.
 
@@ -223,6 +238,10 @@ YOUR CAPABILITIES & ROLE:
 3. Universal Execution:
    - When the user asks a question, greets you, or discusses design, converse naturally without forcing an action card (set hasAction: false).
    - When the user requests a change (content/text, CSS styling, colors, alignment, layout, or mobile responsive fix), propose the exact change (set hasAction: true).
+   - When the user asks to undo, revert, or restore a previous change:
+     - Check the AVAILABLE PAGE BACKUPS provided below.
+     - If recent backups exist, set hasAction: true, actionType: "restore", targetBackupKey: [the most relevant/recent backup key], and explain which backup snapshot you are proposing to restore.
+     - If no backups are found, explain politely that no automated snapshots were recorded yet on this page.
 
 CRITICAL TECHNICAL RULES FOR ACTIONS (hasAction: true):
 1. CONTENT CHANGES ("contentPatches"):
@@ -252,9 +271,12 @@ CRITICAL TECHNICAL RULES FOR ACTIONS (hasAction: true):
    - "content": Text/copy updates only.
    - "style": CSS styling or layout updates only.
    - "both": Both text changes AND CSS styling.
+   - "restore": Revert/restore page back to a safety backup snapshot.
 
 PAGE CONTEXT:
 ${pageStructureSummary}
+
+${backupsSummary}
 
 OUTPUT FORMAT:
 Respond strictly with valid JSON conforming to this schema:
@@ -262,9 +284,10 @@ Respond strictly with valid JSON conforming to this schema:
   "reply": "Your conversational response in GitHub-flavored markdown. Explain what you found or what changes you prepared.",
   "hasAction": true | false,
   "action": {
-    "targetSectionId": "section_id",
-    "sectionTitle": "Section Title",
-    "actionType": "content" | "style" | "both",
+    "targetSectionId": "section_id (optional if restore)",
+    "sectionTitle": "Section Title (optional if restore)",
+    "actionType": "content" | "style" | "both" | "restore",
+    "targetBackupKey": "snapshot_key (required if actionType is restore)",
     "actionSummary": "1-line summary of what will be done",
     "detectedIssues": ["issue or request item"],
     "contentPatches": [
@@ -275,7 +298,7 @@ Respond strictly with valid JSON conforming to this schema:
         "replace": "New replacement text"
       }
     ],
-    "scopedCss": "Clean scoped CSS rules here (or empty string if content-only)"
+    "scopedCss": "Clean scoped CSS rules here (or empty string if content-only or restore)"
   }
 }
 `;
@@ -313,7 +336,7 @@ Respond strictly with valid JSON conforming to this schema:
     }
 
     const completion = await this.client.chat.completions.create({
-      model: this.config.openaiModel || 'gpt-4o',
+      model: this.config.openaiModel || 'gpt-5.4-mini',
       messages,
       response_format: { type: 'json_object' },
       temperature: 0.15,
@@ -327,44 +350,59 @@ Respond strictly with valid JSON conforming to this schema:
 
     if (hasAction && parsed.action) {
       const act = parsed.action;
-      const targetId = act.targetSectionId || candidates[0].id;
-      const matchedCand = candidates.find((c) => c.id === targetId) || candidates[0];
-      const sectionTitle = act.sectionTitle || matchedCand.heading;
+      const isRestore = act.actionType === 'restore' || Boolean(act.targetBackupKey);
 
-      const contentPatches: ContentPatch[] = Array.isArray(act.contentPatches)
-        ? act.contentPatches.filter((p: any) => p && typeof p.search === 'string' && typeof p.replace === 'string')
-        : [];
+      if (isRestore) {
+        const latestKey = (request.pageContext?.recentBackups && request.pageContext.recentBackups[request.pageContext.recentBackups.length - 1]?.key) || '';
+        const targetBackupKey = act.targetBackupKey || latestKey;
+        action = {
+          actionType: 'restore',
+          targetBackupKey,
+          actionSummary: act.actionSummary || `Restore snapshot ${targetBackupKey}`,
+          detectedIssues: ['Revert to previous page state requested'],
+          contentPatches: [],
+          scopedCss: '',
+        };
+      } else {
+        const targetId = act.targetSectionId || candidates[0].id;
+        const matchedCand = candidates.find((c) => c.id === targetId) || candidates[0];
+        const sectionTitle = act.sectionTitle || matchedCand.heading;
 
-      const actionType: 'content' | 'style' | 'both' =
-        act.actionType || (contentPatches.length && act.scopedCss?.trim() ? 'both' : contentPatches.length ? 'content' : 'style');
+        const contentPatches: ContentPatch[] = Array.isArray(act.contentPatches)
+          ? act.contentPatches.filter((p: any) => p && typeof p.search === 'string' && typeof p.replace === 'string')
+          : [];
 
-      let scopedCss = '';
-      if (typeof act.scopedCss === 'string' && act.scopedCss.trim()) {
-        const isFormOrCard =
-          matchedCand.widgetTypes.some((w) => w.includes('form') || w.includes('inquiry') || w.includes('button')) ||
-          (matchedCand.innerClasses || []).some((c) => c.includes('card') || c.includes('inquiry') || c.includes('form'));
+        const actionType: 'content' | 'style' | 'both' =
+          act.actionType || (contentPatches.length && act.scopedCss?.trim() ? 'both' : contentPatches.length ? 'content' : 'style');
 
-        scopedCss = generateScopedSectionCss({
-          elementId: matchedCand.id,
+        let scopedCss = '';
+        if (typeof act.scopedCss === 'string' && act.scopedCss.trim()) {
+          const isFormOrCard =
+            matchedCand.widgetTypes.some((w) => w.includes('form') || w.includes('inquiry') || w.includes('button')) ||
+            (matchedCand.innerClasses || []).some((c) => c.includes('card') || c.includes('inquiry') || c.includes('form'));
+
+          scopedCss = generateScopedSectionCss({
+            elementId: matchedCand.id,
+            sectionTitle,
+            extraRules: act.scopedCss,
+            isFormOrCard,
+          });
+        }
+
+        action = {
+          targetSectionId: matchedCand.id,
           sectionTitle,
-          extraRules: act.scopedCss,
-          isFormOrCard,
-        });
+          actionType,
+          actionSummary: act.actionSummary || (actionType === 'content' ? `Update text in ${sectionTitle}` : `Optimize layout in ${sectionTitle}`),
+          detectedIssues: Array.isArray(act.detectedIssues) ? act.detectedIssues : [act.actionSummary || 'User requested adjustment'],
+          contentPatches,
+          scopedCss,
+          diffPreview: {
+            textDiffs: contentPatches.map((p) => ({ search: p.search, replace: p.replace })),
+            cssHighlights: scopedCss ? [scopedCss.slice(0, 150) + '...'] : [],
+          },
+        };
       }
-
-      action = {
-        targetSectionId: matchedCand.id,
-        sectionTitle,
-        actionType,
-        actionSummary: act.actionSummary || (actionType === 'content' ? `Update text in ${sectionTitle}` : `Optimize layout in ${sectionTitle}`),
-        detectedIssues: Array.isArray(act.detectedIssues) ? act.detectedIssues : [act.actionSummary || 'User requested adjustment'],
-        contentPatches,
-        scopedCss,
-        diffPreview: {
-          textDiffs: contentPatches.map((p) => ({ search: p.search, replace: p.replace })),
-          cssHighlights: scopedCss ? [scopedCss.slice(0, 150) + '...'] : [],
-        },
-      };
     }
 
     const reply = parsed.reply || (hasAction ? action?.actionSummary || 'Changes prepared.' : 'How can I assist you with this page?');
@@ -373,6 +411,7 @@ Respond strictly with valid JSON conforming to this schema:
       reply,
       hasAction,
       action,
+      targetBackupKey: action?.targetBackupKey,
       // Backward compatibility fields for bridge
       matchedElementId: action?.targetSectionId,
       sectionTitle: action?.sectionTitle,
@@ -403,6 +442,39 @@ Respond strictly with valid JSON conforming to this schema:
         reply: `👋 Hello! I am your **ERA Page Architect**. I have full visibility into all ${candidates.length} sections on this page.\n\nYou can ask me to:\n- 📝 **Change or replace text** in any section\n- 🎨 **Adjust colors, fonts, margins, or CSS styling**\n- 📱 **Fix mobile/tablet responsive stacking & overflow**\n- 🖼️ **Review a section screenshot**\n\nWhat would you like to adjust on this page?`,
         hasAction: false,
       };
+    }
+
+    const isUndo = rawMsg.includes('undo') || rawMsg.includes('revert') || rawMsg.includes('restore') || rawMsg.includes('rollback');
+    if (isUndo) {
+      const backups = request.pageContext?.recentBackups || [];
+      if (backups.length > 0) {
+        const latest = backups[backups.length - 1];
+        const dateStr = latest.date_gmt || (latest.timestamp ? new Date(latest.timestamp * 1000).toLocaleString() : '');
+        return {
+          reply: `I found a previous backup snapshot for this page from **${dateStr || 'recent save'}** (\`${latest.key}\`).\n\nClick the button below to revert the page back to this snapshot.`,
+          hasAction: true,
+          actionType: 'restore',
+          targetBackupKey: latest.key,
+          action: {
+            actionType: 'restore',
+            targetBackupKey: latest.key,
+            actionSummary: `Restore snapshot ${latest.key}`,
+            detectedIssues: ['Revert to previous page state requested'],
+            contentPatches: [],
+            scopedCss: '',
+          },
+          explanation: `Revert page to snapshot ${latest.key}`,
+          detectedIssues: ['Revert to previous page state requested'],
+          contentPatches: [],
+          scopedCss: '',
+          confidence: 1.0,
+        };
+      } else {
+        return {
+          reply: `I checked the page history, but there are no automated backups recorded yet for this page to revert to.`,
+          hasAction: false,
+        };
+      }
     }
 
     const matchResult = this.sectionMatcher['heuristicMatch'](request, candidates);
