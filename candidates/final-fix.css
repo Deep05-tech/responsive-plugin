@@ -40,6 +40,40 @@ section {
   min-height: fit-content !important;
 }
 
+/* Ensure Elementor columns inside sections span 100% unless multi-column */
+.elementor-section .elementor-container > .elementor-column:only-child,
+.elementor-column.elementor-col-100,
+.elementor-column.elementor-col-,
+.elementor-element-demo_header_col {
+  width: 100% !important;
+  flex: 1 1 100% !important;
+  max-width: 100% !important;
+}
+
+@media (min-width: 1025px) {
+  header.fixed-header {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 0 50px !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    box-sizing: border-box !important;
+  }
+  nav.header-nav {
+    width: 600px !important;
+    max-width: 600px !important;
+    display: flex !important;
+    justify-content: space-between !important;
+  }
+  .header-cta-btn {
+    width: 180px !important;
+    height: 44px !important;
+    padding: 0 !important;
+    flex-shrink: 0 !important;
+  }
+}
+
 /* 3. Universal Card & Form Box-Sizing */
 .vispan-inquiry-card,
 .bottom-form-card,
