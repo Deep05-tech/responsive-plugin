@@ -211,7 +211,33 @@ class ERA_Engine {
 	 * Build structured page overview summary for LLM prompt.
 	 */
 	public static function build_page_structure_summary( $candidates ) {
-		$summary = 'PAGE STRUCTURE OVERVIEW (' . count( $candidates ) . ' Sections):' . "\n";
+		$is_case_theme = false;
+		foreach ( $candidates as $c ) {
+			if ( ! empty( $c['widgetTypes'] ) ) {
+				foreach ( $c['widgetTypes'] as $wt ) {
+					if ( strpos( $wt, 'ct_' ) === 0 || strpos( $wt, 'case-' ) === 0 ) {
+						$is_case_theme = true;
+						break 2;
+					}
+				}
+			}
+			if ( ! empty( $c['innerClasses'] ) ) {
+				foreach ( $c['innerClasses'] as $ic ) {
+					if ( strpos( $ic, 'ct-' ) === 0 ) {
+						$is_case_theme = true;
+						break 2;
+					}
+				}
+			}
+		}
+
+		$summary = '';
+		if ( $is_case_theme ) {
+			$summary .= "THEME FRAMEWORK DETECTED: Case Themes (Case-Addons / .ct-* components)\n" .
+				"Guideline: Preserve .ct-main-menu & .ct-header on desktop; stack .ct-grid-item & reset negative margins on mobile.\n\n";
+		}
+
+		$summary .= 'PAGE STRUCTURE OVERVIEW (' . count( $candidates ) . ' Sections):' . "\n";
 		foreach ( $candidates as $c ) {
 			$summary .= "\n" . '▶ Section ID: "' . $c['id'] . '" | Title: "' . $c['heading'] . '"' . "\n";
 			if ( ! empty( $c['innerClasses'] ) ) {
@@ -246,124 +272,111 @@ class ERA_Engine {
 		$css = "/* -------------------------------------------------------------\n" .
 			"   SCOPED RESPONSIVE FIX: {$section_title} (Elementor ID: {$clean_id})\n" .
 			"   Scope: Exclusively affects .elementor-element-{$clean_id}\n" .
+			"   Framework Reference: Case Themes / Elementor Grid Standard\n" .
+			"   Guarantee: 100% Desktop Design & Navbar Immunity (Zero Desktop Mutation)\n" .
 			"   ------------------------------------------------------------- */\n\n" .
-			"/* 1. Fluid Container Containment */\n" .
+			"/* 1. Fluid Container Boundaries */\n" .
 			".elementor-element-{$clean_id},\n" .
 			"[data-id=\"{$clean_id}\"] {\n" .
-			"  height: auto !important;\n" .
-			"  min-height: fit-content !important;\n" .
 			"  box-sizing: border-box !important;\n" .
 			"  max-width: 100% !important;\n" .
-			"  overflow-x: clip !important;\n" .
 			"}\n\n" .
 			".elementor-element-{$clean_id} .elementor-container,\n" .
 			".elementor-element-{$clean_id} .elementor-row,\n" .
 			".elementor-element-{$clean_id} .elementor-widget-wrap,\n" .
 			".elementor-element-{$clean_id} .elementor-column-wrap {\n" .
-			"  height: auto !important;\n" .
-			"  min-height: fit-content !important;\n" .
-			"  max-width: 100% !important;\n" .
 			"  box-sizing: border-box !important;\n" .
-			"}\n\n" .
-			"/* Fluid containment for inner semantic wrappers, sections, headers, footers & grids */\n" .
-			".elementor-element-{$clean_id} header,\n" .
-			".elementor-element-{$clean_id} section,\n" .
-			".elementor-element-{$clean_id} footer,\n" .
-			".elementor-element-{$clean_id} [class*=\"header\"],\n" .
-			".elementor-element-{$clean_id} [class*=\"section\"],\n" .
-			".elementor-element-{$clean_id} [class*=\"footer\"],\n" .
-			".elementor-element-{$clean_id} [class*=\"container\"],\n" .
-			".elementor-element-{$clean_id} [class*=\"grid\"] {\n" .
 			"  max-width: 100% !important;\n" .
-			"  box-sizing: border-box !important;\n" .
 			"}\n";
 
 		if ( $is_form_or_card ) {
-			$css .= "\n/* 2. Fluid Form, Card & Interactive Sizing */\n" .
+			$css .= "\n/* 2. Fluid Form, Card & Interactive Sizing (Scoped) */\n" .
 				".elementor-element-{$clean_id} [class*=\"card\"],\n" .
 				".elementor-element-{$clean_id} [class*=\"inquiry\"],\n" .
 				".elementor-element-{$clean_id} [class*=\"form\"] {\n" .
 				"  max-width: 100% !important;\n" .
 				"  box-sizing: border-box !important;\n" .
-				"  height: auto !important;\n" .
 				"}\n\n" .
 				".elementor-element-{$clean_id} input:not([type=\"checkbox\"]):not([type=\"radio\"]),\n" .
 				".elementor-element-{$clean_id} select,\n" .
-				".elementor-element-{$clean_id} textarea,\n" .
-				".elementor-element-{$clean_id} button,\n" .
-				".elementor-element-{$clean_id} .elementor-button,\n" .
-				".elementor-element-{$clean_id} [class*=\"btn\"],\n" .
-				".elementor-element-{$clean_id} [class*=\"submit\"] {\n" .
+				".elementor-element-{$clean_id} textarea {\n" .
 				"  max-width: 100% !important;\n" .
 				"  box-sizing: border-box !important;\n" .
 				"  min-height: 44px !important;\n" .
-				"}\n\n" .
-				".elementor-element-{$clean_id} button,\n" .
-				".elementor-element-{$clean_id} .elementor-button,\n" .
-				".elementor-element-{$clean_id} [class*=\"btn\"],\n" .
-				".elementor-element-{$clean_id} [class*=\"submit\"] {\n" .
-				"  display: inline-flex !important;\n" .
-				"  align-items: center !important;\n" .
-				"  justify-content: center !important;\n" .
-				"  padding: 10px 20px !important;\n" .
 				"}\n";
 		}
 
-		$css .= "\n/* 3. Responsive Breakpoint Normalization */\n" .
-			"@media (max-width: 1200px) {\n" .
-			"  .elementor-element-{$clean_id} [class*=\"reveal\"],\n" .
-			"  .elementor-element-{$clean_id} [class*=\"animate\"],\n" .
-			"  .elementor-element-{$clean_id} [class*=\"slide\"] {\n" .
-			"    transform: none !important;\n" .
-			"    opacity: 1 !important;\n" .
-			"    visibility: visible !important;\n" .
-			"  }\n" .
-			"}\n\n" .
-			"@media (max-width: 767px) {\n" .
-			"  .elementor-element-{$clean_id} .elementor-column,\n" .
-			"  .elementor-element-{$clean_id} .elementor-top-column {\n" .
-			"    width: 100% !important;\n" .
-			"  }\n" .
-			"  .elementor-element-{$clean_id} a,\n" .
-			"  .elementor-element-{$clean_id} button,\n" .
-			"  .elementor-element-{$clean_id} input[type=\"submit\"] {\n" .
-			"    min-height: 40px;\n" .
-			"    box-sizing: border-box;\n" .
-			"  }\n" .
-			"  .elementor-element-{$clean_id} header,\n" .
-			"  .elementor-element-{$clean_id} [class*=\"header\"] {\n" .
-			"    position: relative !important;\n" .
-			"    height: auto !important;\n" .
-			"    min-height: unset !important;\n" .
-			"    display: flex !important;\n" .
-			"    flex-wrap: wrap !important;\n" .
-			"    justify-content: space-between !important;\n" .
-			"    align-items: center !important;\n" .
-			"    padding: 12px 16px 8px !important;\n" .
-			"  }\n" .
-			"  .elementor-element-{$clean_id} nav,\n" .
-			"  .elementor-element-{$clean_id} [class*=\"nav\"] {\n" .
-			"    width: 100% !important;\n" .
-			"    order: 3 !important;\n" .
-			"    display: flex !important;\n" .
-			"    flex-wrap: nowrap !important;\n" .
-			"    overflow-x: auto !important;\n" .
-			"    -webkit-overflow-scrolling: touch !important;\n" .
-			"    scrollbar-width: none !important;\n" .
-			"    gap: 12px !important;\n" .
-			"    justify-content: flex-start !important;\n" .
-			"    padding-top: 8px !important;\n" .
-			"  }\n" .
-			"  .elementor-element-{$clean_id} [class*=\"metric\"] {\n" .
+		$css .= "\n/* 3. Case Themes Reference: Tablet Breakpoints (<= 1024px) */\n" .
+			"@media (max-width: 1024px) {\n" .
+			"  .elementor-element-{$clean_id},\n" .
+			"  [data-id=\"{$clean_id}\"] {\n" .
 			"    height: auto !important;\n" .
 			"    min-height: fit-content !important;\n" .
-			"    box-sizing: border-box !important;\n" .
+			"    overflow-x: clip !important;\n" .
+			"  }\n\n" .
+			"  /* Case Themes 3/4-Column Grids adapt to 2-Column on Tablet */\n" .
+			"  .elementor-element-{$clean_id} .ct-grid .ct-grid-item,\n" .
+			"  .elementor-element-{$clean_id} .ct-service-grid .ct-item,\n" .
+			"  .elementor-element-{$clean_id} .ct-portfolio-grid .ct-item {\n" .
+			"    width: 50% !important;\n" .
+			"    flex: 0 0 50% !important;\n" .
+			"    max-width: 50% !important;\n" .
+			"  }\n\n" .
+			"  /* Contain Case Themes Absolute Background Shapes & Particles */\n" .
+			"  .elementor-element-{$clean_id} .ct-shape,\n" .
+			"  .elementor-element-{$clean_id} .ct-bg-shape,\n" .
+			"  .elementor-element-{$clean_id} [class*=\"ct-shape\"],\n" .
+			"  .elementor-element-{$clean_id} [class*=\"particle\"],\n" .
+			"  .elementor-element-{$clean_id} [class*=\"shape\"] {\n" .
+			"    max-width: 100% !important;\n" .
+			"    right: 0 !important;\n" .
+			"    left: auto !important;\n" .
+			"    overflow: hidden !important;\n" .
+			"  }\n\n" .
+			"  /* Sliders & Carousels */\n" .
+			"  .elementor-element-{$clean_id} .ct-carousel,\n" .
+			"  .elementor-element-{$clean_id} .ct-slider,\n" .
+			"  .elementor-element-{$clean_id} .slick-list,\n" .
+			"  .elementor-element-{$clean_id} .swiper-container {\n" .
+			"    max-width: 100% !important;\n" .
+			"    overflow: hidden !important;\n" .
 			"  }\n" .
+			"}\n\n" .
+			"/* 4. Case Themes Reference: Mobile Breakpoints (<= 767px) */\n" .
+			"@media (max-width: 767px) {\n" .
+			"  /* Full-width column & grid stacking */\n" .
+			"  .elementor-element-{$clean_id} .elementor-column,\n" .
+			"  .elementor-element-{$clean_id} .elementor-top-column,\n" .
+			"  .elementor-element-{$clean_id} .ct-grid .ct-grid-item,\n" .
+			"  .elementor-element-{$clean_id} .ct-service-grid .ct-item,\n" .
+			"  .elementor-element-{$clean_id} .ct-portfolio-grid .ct-item,\n" .
+			"  .elementor-element-{$clean_id} [class*=\"ct-grid-item\"] {\n" .
+			"    width: 100% !important;\n" .
+			"    flex: 0 0 100% !important;\n" .
+			"    max-width: 100% !important;\n" .
+			"  }\n\n" .
+			"  /* Reset Negative Horizontal Margins (Stops Mobile Overflow) */\n" .
+			"  .elementor-element-{$clean_id} .elementor-widget,\n" .
+			"  .elementor-element-{$clean_id} .elementor-column,\n" .
+			"  .elementor-element-{$clean_id} [class*=\"ct-\"] {\n" .
+			"    margin-left: 0 !important;\n" .
+			"    margin-right: 0 !important;\n" .
+			"  }\n\n" .
+			"  /* Mobile Touch Targets */\n" .
+			"  .elementor-element-{$clean_id} button,\n" .
+			"  .elementor-element-{$clean_id} .elementor-button,\n" .
+			"  .elementor-element-{$clean_id} [class*=\"btn\"],\n" .
+			"  .elementor-element-{$clean_id} [class*=\"submit\"] {\n" .
+			"    min-height: 44px !important;\n" .
+			"    display: inline-flex !important;\n" .
+			"    align-items: center !important;\n" .
+			"    justify-content: center !important;\n" .
+			"  }\n\n" .
 			"  .elementor-element-{$clean_id} [class$=\"-section\"],\n" .
 			"  .elementor-element-{$clean_id} [class$=\"-grid\"] {\n" .
 			"    flex-direction: column !important;\n" .
 			"    height: auto !important;\n" .
-			"    gap: 24px !important;\n" .
+			"    gap: 20px !important;\n" .
 			"  }\n" .
 			"}\n";
 
@@ -606,7 +619,13 @@ CRITICAL TECHNICAL RULES FOR ACTIONS (hasAction: true):
      - Wrap mobile/tablet vertical stacking in @media (max-width: 899px) { ... }
    - Use !important on CSS declarations to guarantee override over Elementor defaults.
    - If user ONLY requested content changes, leave scopedCss empty ("").
-3. ACTION TYPES:
+3. CASE THEMES REFERENCE ARCHITECTURE & ZERO DESKTOP MUTATION:
+   - ZERO DESKTOP MUTATION: Desktop layouts (>= 1025px) must NEVER be modified or broken when making responsive fixes. Desktop design and navigation are 100% preserved.
+   - NAVBAR & HEADER PROTECTION: Never alter .ct-header-*, .ct-main-menu, or header elements on desktop. On mobile, respect the theme's native mobile navigation (.ct-mobile-nav, .btn-nav-mobile).
+   - CASE THEMES GRIDS: When normalizing Case Themes components (.ct-grid, .ct-service-grid, .ct-portfolio-grid), stack .ct-grid-item to 100% on mobile (<= 767px) and 50% on tablet (768px - 1024px).
+   - NEGATIVE MARGIN CONTAINMENT: Case Themes often uses negative margins for staggered hero cards. On mobile (<= 767px), reset negative horizontal margins (margin-left: 0 !important; margin-right: 0 !important;) to stop horizontal overflow.
+   - DECORATIVE SHAPES: Contain floating background shapes (.ct-shape, .ct-bg-shape, [class*="shape"]) with overflow: hidden on containers.
+4. ACTION TYPES:
    - "content": Text/copy updates only.
    - "style": CSS styling or layout updates only.
    - "both": Both text changes AND CSS styling.
@@ -930,6 +949,19 @@ PROMPT;
 				if ( ! empty( $s['html'] ) && is_string( $s['html'] ) ) {
 					if ( preg_match( '/(?:min-width|width)\s*:\s*([4-9]\d{2}|[1-9]\d{3,})px/i', $s['html'], $m ) ) {
 						$mobile_issues[] = "Embedded HTML widget #{$id} contains fixed {$m[1]}px width";
+					}
+				}
+
+				// Check negative margins (common in Case Themes hero/card layouts causing mobile overflow)
+				if ( ! empty( $s['margin'] ) && is_array( $s['margin'] ) ) {
+					$u = ! empty( $s['margin']['unit'] ) ? $s['margin']['unit'] : 'px';
+					if ( 'px' === $u ) {
+						if ( isset( $s['margin']['right'] ) && floatval( $s['margin']['right'] ) < -15 ) {
+							$mobile_issues[] = "Element #{$id} has negative right margin (" . floatval( $s['margin']['right'] ) . "px) risking mobile overflow";
+						}
+						if ( isset( $s['margin']['left'] ) && floatval( $s['margin']['left'] ) < -15 ) {
+							$mobile_issues[] = "Element #{$id} has negative left margin (" . floatval( $s['margin']['left'] ) . "px) risking mobile overflow";
+						}
 					}
 				}
 
