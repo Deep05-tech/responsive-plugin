@@ -13,6 +13,7 @@ class ERA_Admin {
 	public function init() {
 		add_action( 'admin_menu', array( $this, 'add_admin_menu' ) );
 		add_action( 'admin_post_era_restore_backup', array( $this, 'handle_admin_restore' ) );
+		add_action( 'wp_ajax_era_restore_backup', array( $this, 'handle_admin_restore' ) );
 		add_action( 'wp_ajax_era_run_audit', array( $this, 'handle_ajax_audit' ) );
 		add_action( 'wp_ajax_era_run_simulate', array( $this, 'handle_ajax_simulate' ) );
 		add_action( 'wp_ajax_era_apply_fix', array( $this, 'handle_ajax_apply_fix' ) );
@@ -382,15 +383,29 @@ class ERA_Admin {
 
 	public function handle_admin_restore() {
 		if ( ! current_user_can( 'edit_pages' ) ) {
+			if ( wp_doing_ajax() ) {
+				wp_send_json_error( array( 'message' => __( 'Unauthorized access.', 'era-bridge' ) ), 403 );
+			}
 			wp_die( __( 'Unauthorized access.', 'era-bridge' ) );
 		}
 
-		check_admin_referer( 'era_restore_action', 'era_nonce' );
+		$is_ajax = wp_doing_ajax() || ! empty( $_POST['is_ajax'] );
+		if ( $is_ajax ) {
+			check_ajax_referer( 'era_restore_action', 'era_nonce' );
+		} else {
+			check_admin_referer( 'era_restore_action', 'era_nonce' );
+		}
 
-		$post_id = isset( $_POST['post_id'] ) ? absint( $_POST['post_id'] ) : 0;
-		$backup_key = isset( $_POST['backup_key'] ) ? sanitize_text_field( $_POST['backup_key'] ) : '';
+		$post_id = ! empty( $_POST['post_id'] ) ? absint( $_POST['post_id'] ) : ( ! empty( $_POST['page_id'] ) ? absint( $_POST['page_id'] ) : 0 );
+		if ( ! $post_id ) {
+			$post_id = ! empty( $_REQUEST['post_id'] ) ? absint( $_REQUEST['post_id'] ) : ( ! empty( $_REQUEST['page_id'] ) ? absint( $_REQUEST['page_id'] ) : 0 );
+		}
+		$backup_key = ! empty( $_POST['backup_key'] ) ? sanitize_text_field( $_POST['backup_key'] ) : ( ! empty( $_REQUEST['backup_key'] ) ? sanitize_text_field( $_REQUEST['backup_key'] ) : '' );
 
 		if ( ! $post_id || empty( $backup_key ) ) {
+			if ( $is_ajax ) {
+				wp_send_json_error( array( 'message' => __( 'Invalid page ID or backup key.', 'era-bridge' ) ), 400 );
+			}
 			wp_redirect( admin_url( 'admin.php?page=era-backups&status=error' ) );
 			exit;
 		}
@@ -405,19 +420,28 @@ class ERA_Admin {
 		}
 
 		if ( ! empty( $backup_raw ) ) {
+			// Find title of backup being restored
+			$b_list = get_post_meta( $post_id, '_era_backups_list', true );
+			if ( ! is_array( $b_list ) ) $b_list = array();
+			$target_title = $backup_key;
+			foreach ( $b_list as $b_item ) {
+				if ( isset( $b_item['key'] ) && $b_item['key'] === $backup_key ) {
+					$target_title = self::get_backup_title( $b_item );
+					break;
+				}
+			}
+
 			// Save current state as safety snapshot before restoring
 			$current_raw = get_post_meta( $post_id, '_elementor_data', true );
 			if ( ! empty( $current_raw ) ) {
 				$pre_ts  = time();
 				$pre_key = '_era_backup_' . $pre_ts . '_pre_restore';
 				update_post_meta( $post_id, $pre_key, wp_slash( $current_raw ) );
-				$b_list = get_post_meta( $post_id, '_era_backups_list', true );
-				if ( ! is_array( $b_list ) ) $b_list = array();
 				$b_list[] = array(
 					'key'           => $pre_key,
 					'timestamp'     => $pre_ts,
 					'date_gmt'      => gmdate( 'Y-m-d H:i:s', $pre_ts ),
-					'title'         => sprintf( __( 'Safety Snapshot (before restoring %s)', 'era-bridge' ), esc_html( $backup_key ) ),
+					'title'         => sprintf( __( 'Safety Snapshot (before restoring %s)', 'era-bridge' ), esc_html( $target_title ) ),
 					'section_title' => __( 'Full Page', 'era-bridge' ),
 					'action_type'   => 'restore',
 					'details'       => __( 'Automatic safety snapshot captured prior to restoring an earlier version.', 'era-bridge' ),
@@ -430,10 +454,25 @@ class ERA_Admin {
 			if ( class_exists( '\Elementor\Plugin' ) && isset( \Elementor\Plugin::$instance->files_manager ) ) {
 				\Elementor\Plugin::$instance->files_manager->clear_cache();
 			}
+
+			if ( $is_ajax ) {
+				wp_send_json_success( array(
+					'message'     => sprintf( __( 'Successfully restored version: "%s"', 'era-bridge' ), $target_title ),
+					'page_id'     => $post_id,
+					'backup_key'  => $backup_key,
+					'title'       => $target_title,
+					'restored_at' => gmdate( 'Y-m-d H:i:s' ),
+					'page_url'    => get_permalink( $post_id ),
+				) );
+			}
+
 			wp_redirect( admin_url( 'admin.php?page=era-backups&status=restored&page_id=' . $post_id ) );
 			exit;
 		}
 
+		if ( $is_ajax ) {
+			wp_send_json_error( array( 'message' => __( 'Backup snapshot could not be found.', 'era-bridge' ) ), 404 );
+		}
 		wp_redirect( admin_url( 'admin.php?page=era-backups&status=not_found' ) );
 		exit;
 	}
@@ -726,6 +765,7 @@ class ERA_Admin {
 
 	/**
 	 * Backups & Restore Submenu View.
+	 * Displays the demo page on the left and a right-side dropdown of changes to restore.
 	 */
 	public function render_backups_page() {
 		$posts = get_posts( array(
@@ -740,173 +780,533 @@ class ERA_Admin {
 			),
 		) );
 
-		// Compile all backups for the quick selector
-		$all_version_options = array();
+		// Compile page data and backups list for JavaScript
+		$pages_data = array();
+		$default_page_id = 0;
+
 		foreach ( $posts as $p ) {
 			$b_list = get_post_meta( $p->ID, '_era_backups_list', true );
-			if ( is_array( $b_list ) ) {
-				$rev = array_reverse( $b_list );
-				foreach ( $rev as $idx => $b ) {
-					$title = self::get_backup_title( $b, $idx + 1 );
-					$all_version_options[] = array(
-						'post_id'    => $p->ID,
-						'page_title' => get_the_title( $p->ID ),
-						'key'        => $b['key'],
-						'title'      => $title,
-						'date_gmt'   => ! empty( $b['date_gmt'] ) ? $b['date_gmt'] : '',
-						'type'       => ! empty( $b['action_type'] ) ? $b['action_type'] : 'backup',
-					);
-				}
+			if ( ! is_array( $b_list ) || empty( $b_list ) ) {
+				continue;
+			}
+			$rev_backups = array_reverse( $b_list );
+			$formatted_backups = array();
+			$total = count( $rev_backups );
+
+			foreach ( $rev_backups as $idx => $b ) {
+				$title   = self::get_backup_title( $b, $idx + 1 );
+				$type    = ! empty( $b['action_type'] ) ? $b['action_type'] : 'autofix';
+				$section = ! empty( $b['section_title'] ) ? $b['section_title'] : '';
+				$date    = ! empty( $b['date_gmt'] ) ? $b['date_gmt'] : ( ! empty( $b['timestamp'] ) ? gmdate( 'Y-m-d H:i:s', $b['timestamp'] ) : '' );
+
+				$formatted_backups[] = array(
+					'key'           => $b['key'],
+					'title'         => $title,
+					'type'          => $type,
+					'section_title' => $section,
+					'date_gmt'      => $date,
+					'display_label' => ( $idx === 0 ? '⚡ Latest: ' : ( 'Option ' . ( $idx + 1 ) . ': ' ) ) . $title . ( $date ? ' (' . $date . ')' : '' ),
+				);
+			}
+
+			$permalink = get_permalink( $p->ID );
+			$pages_data[ $p->ID ] = array(
+				'id'        => $p->ID,
+				'title'     => get_the_title( $p->ID ),
+				'permalink' => $permalink,
+				'backups'   => $formatted_backups,
+			);
+
+			if ( ! $default_page_id || $p->ID == 521 ) {
+				$default_page_id = $p->ID;
 			}
 		}
 
+		$nonce = wp_create_nonce( 'era_restore_action' );
 		?>
-		<div class="wrap" style="max-width:1200px;">
-			<h1 style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+		<div class="wrap" style="max-width:1400px;">
+			<h1 style="display:flex;align-items:center;gap:10px;margin-bottom:6px;font-size:24px;font-weight:700;">
 				<span class="dashicons dashicons-backup" style="font-size:28px;width:28px;height:28px;color:#0284c7;"></span>
-				<?php esc_html_e( 'ERA Backups & Version History', 'era-bridge' ); ?>
+				<?php esc_html_e( 'ERA Page Version History & Restore', 'era-bridge' ); ?>
 			</h1>
-			<p style="color:#64748b;font-size:14px;margin-top:0;">
-				<?php esc_html_e( 'Choose any previous change or version below to restore it instantly. A safety snapshot is always taken before reverting so you never lose work.', 'era-bridge' ); ?>
+			<p style="color:#64748b;font-size:14px;margin-top:0;margin-bottom:18px;">
+				<?php esc_html_e( 'View your page on the left and select any change from the right-side dropdown to restore that version instantly.', 'era-bridge' ); ?>
 			</p>
 
 			<?php if ( isset( $_GET['status'] ) && $_GET['status'] === 'restored' ) : ?>
-				<div class="notice notice-success is-dismissible" style="border-left-color:#10b981;">
+				<div class="notice notice-success is-dismissible" style="border-left-color:#10b981;margin-bottom:16px;">
 					<p style="font-weight:600;">✅ <?php esc_html_e( 'Version successfully restored and Elementor CSS cache cleared!', 'era-bridge' ); ?></p>
 				</div>
-			<?php elseif ( isset( $_GET['status'] ) && $_GET['status'] === 'error' ) : ?>
-				<div class="notice notice-error is-dismissible">
-					<p>❌ <?php esc_html_e( 'Failed to restore version.', 'era-bridge' ); ?></p>
-				</div>
 			<?php endif; ?>
 
-			<?php if ( ! empty( $all_version_options ) ) : ?>
-				<!-- Quick Version Selector Card -->
-				<div class="card" style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:16px 20px;margin:20px 0;">
-					<h3 style="margin:0 0 8px 0;font-size:15px;color:#0f172a;display:flex;align-items:center;gap:6px;">
-						<span>⚡</span> <?php esc_html_e( 'Quick Restore: Choose a Version to Restore', 'era-bridge' ); ?>
-					</h3>
-					<p style="margin:0 0 12px 0;font-size:13px;color:#64748b;">
-						<?php esc_html_e( 'Select which change or layout you want to restore from the dropdown, then click "Restore Selected Version":', 'era-bridge' ); ?>
-					</p>
-					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;" onsubmit="return confirm('Are you sure you want to restore the selected version?');">
-						<input type="hidden" name="action" value="era_restore_backup" />
-						<?php wp_nonce_field( 'era_restore_action', 'era_nonce' ); ?>
-						<select id="era-quick-version-select" onchange="var p = this.value.split('|'); document.getElementById('era-quick-post-id').value = p[0]; document.getElementById('era-quick-key').value = p[1];" style="min-width:480px;max-width:100%;height:38px;padding:0 10px;font-size:13px;border-radius:6px;border-color:#cbd5e1;">
-							<option value="">-- <?php esc_html_e( 'Select which change you want to restore...', 'era-bridge' ); ?> --</option>
-							<?php foreach ( $all_version_options as $opt ) : ?>
-								<option value="<?php echo esc_attr( $opt['post_id'] . '|' . $opt['key'] ); ?>">
-									<?php echo esc_html( '[' . $opt['page_title'] . '] ' . $opt['title'] . ' (' . $opt['date_gmt'] . ')' ); ?>
-								</option>
-							<?php endforeach; ?>
-						</select>
-						<input type="hidden" id="era-quick-post-id" name="post_id" value="" />
-						<input type="hidden" id="era-quick-key" name="backup_key" value="" />
-						<button type="submit" class="button button-primary" style="background:#0284c7;border-color:#0284c7;height:38px;padding:0 18px;font-weight:600;border-radius:6px;">
-							<?php esc_html_e( 'Restore Selected Version', 'era-bridge' ); ?>
-						</button>
-					</form>
-				</div>
-			<?php endif; ?>
-
-			<?php if ( empty( $posts ) ) : ?>
-				<div class="card" style="padding:24px;border-radius:8px;">
+			<?php if ( empty( $pages_data ) ) : ?>
+				<div class="card" style="padding:28px;border-radius:10px;">
 					<p style="font-size:14px;color:#64748b;margin:0;">
-						<?php esc_html_e( 'No backups created yet. When changes or fixes are applied, each version will be recorded here with its title.', 'era-bridge' ); ?>
+						<?php esc_html_e( 'No page backups found yet. Whenever changes are made or responsive fixes are applied, version snapshots will appear here.', 'era-bridge' ); ?>
 					</p>
 				</div>
 			<?php else : ?>
-				<table class="wp-list-table widefat fixed striped" style="margin-top:20px;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+
+				<!-- Top Interactive Split Viewer: Display Page on Left + Dropdown of Changes on Right -->
+				<div class="era-split-preview-card" style="max-width:100% !important;width:100%;box-sizing:border-box;background:#fff;border:1px solid #cbd5e1;border-radius:12px;padding:0;overflow:hidden;box-shadow:0 4px 6px -1px rgba(0,0,0,0.06);margin-bottom:28px;">
+					<!-- Header Toolbar -->
+					<div style="background:#0f172a;color:#fff;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+						<div style="display:flex;align-items:center;gap:12px;">
+							<span style="font-weight:700;font-size:15px;display:flex;align-items:center;gap:6px;">
+								<span>🖥️</span> <?php esc_html_e( 'Page Preview & Version Restorer', 'era-bridge' ); ?>
+							</span>
+							<?php if ( count( $pages_data ) > 1 ) : ?>
+								<select id="era-page-switcher" onchange="eraChangeActivePage(this.value);" style="background:#1e293b;color:#fff;border:1px solid #334155;border-radius:6px;height:32px;font-size:12px;padding:0 8px;">
+									<?php foreach ( $pages_data as $pid => $pinfo ) : ?>
+										<option value="<?php echo esc_attr( $pid ); ?>" <?php selected( $pid, $default_page_id ); ?>>
+											<?php echo esc_html( '#' . $pid . ' — ' . $pinfo['title'] . ' (' . count( $pinfo['backups'] ) . ' versions)' ); ?>
+										</option>
+									<?php endforeach; ?>
+								</select>
+							<?php else : ?>
+								<span style="background:#1e293b;color:#38bdf8;font-size:12px;padding:3px 10px;border-radius:12px;font-weight:600;">
+									<?php echo esc_html( '#' . $default_page_id . ' — ' . $pages_data[ $default_page_id ]['title'] ); ?>
+								</span>
+							<?php endif; ?>
+						</div>
+
+						<!-- Device viewport toggle buttons -->
+						<div style="display:flex;align-items:center;gap:6px;">
+							<button type="button" class="button button-small era-vp-btn active" onclick="eraSetPreviewViewport('100%', this);" style="background:#334155;color:#fff;border:none;">
+								🖥️ Desktop
+							</button>
+							<button type="button" class="button button-small era-vp-btn" onclick="eraSetPreviewViewport('768px', this);" style="background:#1e293b;color:#94a3b8;border:none;">
+								💻 Tablet
+							</button>
+							<button type="button" class="button button-small era-vp-btn" onclick="eraSetPreviewViewport('375px', this);" style="background:#1e293b;color:#94a3b8;border:none;">
+								📱 Mobile
+							</button>
+							<a id="era-open-page-link" href="<?php echo esc_url( $pages_data[ $default_page_id ]['permalink'] ); ?>" target="_blank" class="button button-small" style="background:#1e293b;color:#38bdf8;border:none;margin-left:6px;" title="Open page in new browser tab">
+								Open &nearr;
+							</a>
+							<button type="button" class="button button-small" onclick="eraReloadPreviewFrame();" style="background:#1e293b;color:#fff;border:none;" title="Reload preview iframe">
+								🔄
+							</button>
+						</div>
+					</div>
+
+					<!-- Split Screen Layout: Left Page View + Right Dropdown Panel (Always Side-by-Side) -->
+					<div style="display:flex;flex-direction:row;flex-wrap:nowrap;min-height:680px;background:#f8fafc;align-items:stretch;">
+						<!-- LEFT: Display the Demo Page -->
+						<div style="flex:1 1 auto;width:calc(100% - 360px);min-width:0;background:#e2e8f0;padding:16px;display:flex;align-items:center;justify-content:center;box-sizing:border-box;">
+							<div id="era-iframe-wrapper" style="width:100%;height:650px;background:#fff;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.1);overflow:hidden;transition:width 0.3s ease;">
+								<iframe id="era-demo-iframe" src="<?php echo esc_url( $pages_data[ $default_page_id ]['permalink'] ); ?>" style="width:100%;height:100%;border:none;background:#fff;"></iframe>
+							</div>
+						</div>
+
+						<!-- RIGHT: Dropdown of Changes Done & Instant Restore -->
+						<div style="width:360px;min-width:360px;flex-shrink:0;background:#fff;border-left:1px solid #cbd5e1;padding:22px;display:flex;flex-direction:column;box-sizing:border-box;">
+							<div style="margin-bottom:16px;">
+								<h3 style="margin:0 0 6px 0;font-size:16px;color:#0f172a;display:flex;align-items:center;gap:6px;">
+									<span>📋</span> <?php esc_html_e( 'Changes Done on This Page', 'era-bridge' ); ?>
+								</h3>
+								<p style="margin:0;font-size:13px;color:#64748b;line-height:1.4;">
+									<?php esc_html_e( 'Select any change from the dropdown to restore that version:', 'era-bridge' ); ?>
+								</p>
+							</div>
+
+							<!-- The Dropdown -->
+							<div style="margin-bottom:16px;">
+								<label for="era-right-dropdown" style="display:block;font-size:12px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">
+									<?php esc_html_e( 'Choose Version to Restore:', 'era-bridge' ); ?>
+								</label>
+								<select id="era-right-dropdown" onchange="eraOnRightDropdownChange(this);" style="width:100%;height:44px;font-size:13px;font-weight:600;border:2px solid #0284c7;border-radius:8px;padding:0 12px;background:#f0f9ff;color:#0369a1;cursor:pointer;">
+									<!-- Populated via JavaScript -->
+								</select>
+							</div>
+
+							<!-- Detailed Information Card of Selected Change -->
+							<div id="era-change-info-card" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:18px;">
+								<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+									<span id="era-info-badge" style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;background:#e0f2fe;color:#0369a1;text-transform:uppercase;">Auto Fix</span>
+									<span id="era-info-date" style="font-size:11px;color:#94a3b8;">-</span>
+								</div>
+								<div id="era-info-title" style="font-weight:700;font-size:14px;color:#0f172a;line-height:1.4;margin-bottom:6px;">
+									Change Title
+								</div>
+								<div id="era-info-section" style="font-size:12px;color:#64748b;margin-bottom:6px;">
+									Section: Full Page
+								</div>
+								<div style="font-size:11px;color:#94a3b8;font-family:monospace;background:#f1f5f9;padding:4px 8px;border-radius:4px;word-break:break-all;">
+									Key: <span id="era-info-key">-</span>
+								</div>
+							</div>
+
+							<!-- Restore Action Button -->
+							<button type="button" id="era-btn-split-restore" class="button button-primary" onclick="eraExecuteRightRestore();" style="width:100%;height:46px;font-size:14px;font-weight:700;background:#0284c7;border-color:#0284c7;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;box-shadow:0 2px 4px rgba(2,132,199,0.25);">
+								<span class="dashicons dashicons-backup" style="font-size:18px;margin-top:2px;"></span>
+								<span id="era-btn-restore-label"><?php esc_html_e( 'Restore Selected Version', 'era-bridge' ); ?></span>
+							</button>
+
+							<!-- Feedback Alert -->
+							<div id="era-split-status" style="display:none;margin-top:14px;padding:12px;border-radius:8px;font-size:13px;line-height:1.4;"></div>
+
+							<!-- Total count & safety note -->
+							<div style="margin-top:auto;padding-top:16px;border-top:1px solid #f1f5f9;font-size:12px;color:#94a3b8;line-height:1.4;">
+								🛡️ <em><?php esc_html_e( 'A safety snapshot of your current page will be saved automatically before restoring.', 'era-bridge' ); ?></em>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<!-- All Pages Summary Table: One Clean Row Per Page with Right-Side Dropdown -->
+				<h2 style="font-size:18px;font-weight:700;margin:28px 0 12px 0;display:flex;align-items:center;gap:8px;">
+					<span>📑</span> <?php esc_html_e( 'Pages & Version Pickers', 'era-bridge' ); ?>
+				</h2>
+
+				<table class="wp-list-table widefat fixed striped" style="border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:30px;">
 					<thead>
 						<tr>
-							<th style="width:18%;"><?php esc_html_e( 'Page', 'era-bridge' ); ?></th>
-							<th style="width:38%;"><?php esc_html_e( 'Version / Change Title', 'era-bridge' ); ?></th>
-							<th style="width:14%;"><?php esc_html_e( 'Change Type', 'era-bridge' ); ?></th>
-							<th style="width:16%;"><?php esc_html_e( 'Date & Time (GMT)', 'era-bridge' ); ?></th>
-							<th style="width:14%; text-align:right;"><?php esc_html_e( 'Action', 'era-bridge' ); ?></th>
+							<th style="width:35%;"><?php esc_html_e( 'Page', 'era-bridge' ); ?></th>
+							<th style="width:65%;"><?php esc_html_e( 'Choose Change to Restore (Dropdown)', 'era-bridge' ); ?></th>
 						</tr>
 					</thead>
 					<tbody>
-						<?php foreach ( $posts as $p ) :
-							$backups = get_post_meta( $p->ID, '_era_backups_list', true );
-							if ( ! is_array( $backups ) ) continue;
-							$reversed_backups = array_reverse( $backups );
-							foreach ( $reversed_backups as $idx => $b ) :
-								$title   = self::get_backup_title( $b, $idx + 1 );
-								$type    = ! empty( $b['action_type'] ) ? $b['action_type'] : 'autofix';
-								$section = ! empty( $b['section_title'] ) ? $b['section_title'] : '';
-								$date    = ! empty( $b['date_gmt'] ) ? $b['date_gmt'] : ( ! empty( $b['timestamp'] ) ? gmdate( 'Y-m-d H:i:s', $b['timestamp'] ) : '-' );
-
-								$type_label = __( 'Auto Fix', 'era-bridge' );
-								$type_bg    = '#e0f2fe';
-								$type_color = '#0369a1';
-
-								if ( $type === 'style' ) {
-									$type_label = __( 'Style', 'era-bridge' );
-									$type_bg    = '#ede9fe';
-									$type_color = '#6d28d9';
-								} elseif ( $type === 'content' ) {
-									$type_label = __( 'Content', 'era-bridge' );
-									$type_bg    = '#dcfce7';
-									$type_color = '#15803d';
-								} elseif ( $type === 'both' ) {
-									$type_label = __( 'Style & Content', 'era-bridge' );
-									$type_bg    = '#fef3c7';
-									$type_color = '#b45309';
-								} elseif ( $type === 'restore' ) {
-									$type_label = __( 'Restore Point', 'era-bridge' );
-									$type_bg    = '#fee2e2';
-									$type_color = '#b91c1c';
-								}
-								?>
-								<tr>
-									<td>
-										<strong>#<?php echo esc_html( $p->ID ); ?></strong>
-										<div style="color:#64748b;font-size:12px;margin-top:2px;">
-											<?php echo esc_html( get_the_title( $p->ID ) ); ?>
-										</div>
-									</td>
-									<td>
-										<div style="font-weight:600;font-size:13px;color:#0f172a;line-height:1.4;">
-											<?php echo esc_html( $title ); ?>
-										</div>
-										<div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
-											<?php if ( ! empty( $section ) ) : ?>
-												<span style="display:inline-block;background:#f1f5f9;color:#475569;font-size:11px;font-weight:500;padding:1px 6px;border-radius:4px;border:1px solid #e2e8f0;">
-													<?php echo esc_html( $section ); ?>
-												</span>
-											<?php endif; ?>
-											<code style="font-size:11px;color:#94a3b8;background:transparent;padding:0;">
-												<?php echo esc_html( $b['key'] ); ?>
-											</code>
-										</div>
-									</td>
-									<td>
-										<span style="display:inline-block;background:<?php echo esc_attr( $type_bg ); ?>;color:<?php echo esc_attr( $type_color ); ?>;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;">
-											<?php echo esc_html( $type_label ); ?>
+						<?php foreach ( $pages_data as $pid => $pinfo ) :
+							$backups_count = count( $pinfo['backups'] );
+							$latest        = ! empty( $pinfo['backups'][0] ) ? $pinfo['backups'][0] : null;
+						?>
+							<tr class="era-table-page-row" data-page-id="<?php echo esc_attr( $pid ); ?>">
+								<!-- Left: Page details -->
+								<td style="vertical-align:top;padding:16px;">
+									<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+										<span style="font-weight:700;color:#0284c7;font-size:14px;">#<?php echo esc_html( $pid ); ?></span>
+										<strong style="font-size:15px;color:#0f172a;"><?php echo esc_html( $pinfo['title'] ); ?></strong>
+									</div>
+									<div style="margin-bottom:8px;">
+										<a href="<?php echo esc_url( $pinfo['permalink'] ); ?>" target="_blank" style="font-size:12px;color:#64748b;text-decoration:none;">
+											<?php echo esc_html( $pinfo['permalink'] ); ?> &nearr;
+										</a>
+									</div>
+									<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+										<span style="background:#e0f2fe;color:#0369a1;font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;">
+											<?php echo esc_html( sprintf( _n( '%d change recorded', '%d changes recorded', $backups_count, 'era-bridge' ), $backups_count ) ); ?>
 										</span>
-									</td>
-									<td style="color:#64748b;font-size:12px;">
-										<?php echo esc_html( $date ); ?>
-									</td>
-									<td style="text-align:right;">
-										<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline;">
-											<input type="hidden" name="action" value="era_restore_backup" />
-											<input type="hidden" name="post_id" value="<?php echo esc_attr( $p->ID ); ?>" />
-											<input type="hidden" name="backup_key" value="<?php echo esc_attr( $b['key'] ); ?>" />
-											<?php wp_nonce_field( 'era_restore_action', 'era_nonce' ); ?>
-											<button type="submit" class="button button-small" style="background:#0284c7;color:#fff;border-color:#0284c7;cursor:pointer;font-weight:500;" onclick="return confirm(<?php echo esc_js( sprintf( __( 'Restore this version: "%s"?', 'era-bridge' ), $title ) ); ?>);">
-												<?php esc_html_e( 'Restore', 'era-bridge' ); ?>
-											</button>
-										</form>
-									</td>
-								</tr>
-							<?php endforeach;
-						endforeach; ?>
+										<button type="button" class="button button-small" onclick="eraChangeActivePage(<?php echo esc_attr( $pid ); ?>); window.scrollTo({top:0, behavior:'smooth'});" style="font-size:11px;">
+											👁️ Preview Above
+										</button>
+									</div>
+								</td>
+
+								<!-- Right: Dropdown of changes and Restore button -->
+								<td style="vertical-align:top;padding:16px;">
+									<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+										<select class="era-table-dropdown" data-page-id="<?php echo esc_attr( $pid ); ?>" onchange="eraOnTableDropdownChange(this, <?php echo esc_attr( $pid ); ?>);" style="flex:1;min-width:320px;height:40px;font-size:13px;font-weight:500;border-radius:6px;border:1px solid #cbd5e1;padding:0 10px;">
+											<?php foreach ( $pinfo['backups'] as $b ) : ?>
+												<option value="<?php echo esc_attr( $b['key'] ); ?>" 
+														data-title="<?php echo esc_attr( $b['title'] ); ?>" 
+														data-type="<?php echo esc_attr( $b['type'] ); ?>" 
+														data-section="<?php echo esc_attr( $b['section_title'] ); ?>" 
+														data-date="<?php echo esc_attr( $b['date_gmt'] ); ?>">
+													<?php echo esc_html( $b['display_label'] ); ?>
+												</option>
+											<?php endforeach; ?>
+										</select>
+
+										<button type="button" class="button button-primary" onclick="eraRestoreFromTable(<?php echo esc_attr( $pid ); ?>, this);" style="background:#0284c7;border-color:#0284c7;height:40px;padding:0 18px;font-weight:600;font-size:13px;border-radius:6px;">
+											↺ <?php esc_html_e( 'Restore', 'era-bridge' ); ?>
+										</button>
+									</div>
+
+									<!-- Live Pill showing details of currently selected change -->
+									<div id="era-table-pill-<?php echo esc_attr( $pid ); ?>" style="margin-top:8px;font-size:12px;color:#475569;display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid #e2e8f0;padding:6px 12px;border-radius:6px;">
+										<?php if ( $latest ) : ?>
+											<span style="font-weight:700;color:#0f172a;"><?php echo esc_html( $latest['title'] ); ?></span>
+											<?php if ( ! empty( $latest['section_title'] ) ) : ?>
+												<span style="color:#64748b;">(<?php echo esc_html( $latest['section_title'] ); ?>)</span>
+											<?php endif; ?>
+											<span style="margin-left:auto;color:#94a3b8;font-size:11px;"><?php echo esc_html( $latest['date_gmt'] ); ?></span>
+										<?php endif; ?>
+									</div>
+								</td>
+							</tr>
+						<?php endforeach; ?>
 					</tbody>
 				</table>
+
 			<?php endif; ?>
 		</div>
+
+		<script>
+			var eraPagesData = <?php echo wp_json_encode( $pages_data ); ?>;
+			var eraCurrentPageId = <?php echo intval( $default_page_id ); ?>;
+			var eraRestoreNonce = '<?php echo esc_js( $nonce ); ?>';
+			var eraAjaxUrl = '<?php echo esc_js( admin_url( 'admin-ajax.php' ) ); ?>';
+
+			function eraPopulateRightDropdown(pageId) {
+				var page = eraPagesData[pageId];
+				if (!page) return;
+
+				var select = document.getElementById('era-right-dropdown');
+				if (!select) return;
+
+				select.innerHTML = '';
+				var backups = page.backups || [];
+				for (var i = 0; i < backups.length; i++) {
+					var b = backups[i];
+					var opt = document.createElement('option');
+					opt.value = b.key;
+					opt.textContent = b.display_label;
+					opt.setAttribute('data-title', b.title);
+					opt.setAttribute('data-type', b.type);
+					opt.setAttribute('data-section', b.section_title);
+					opt.setAttribute('data-date', b.date_gmt);
+					opt.setAttribute('data-key', b.key);
+					select.appendChild(opt);
+				}
+
+				if (backups.length > 0) {
+					eraUpdateInfoCard(backups[0]);
+				}
+			}
+
+			function eraUpdateInfoCard(backup) {
+				if (!backup) return;
+
+				var titleEl   = document.getElementById('era-info-title');
+				var badgeEl   = document.getElementById('era-info-badge');
+				var sectionEl = document.getElementById('era-info-section');
+				var dateEl    = document.getElementById('era-info-date');
+				var keyEl     = document.getElementById('era-info-key');
+
+				if (titleEl)   titleEl.textContent   = backup.title || 'Version Snapshot';
+				if (sectionEl) sectionEl.textContent = 'Section: ' + (backup.section_title || 'Full Page');
+				if (dateEl)    dateEl.textContent    = backup.date_gmt || '-';
+				if (keyEl)     keyEl.textContent     = backup.key;
+
+				if (badgeEl) {
+					var t = (backup.type || 'autofix').toLowerCase();
+					if (t === 'style') {
+						badgeEl.textContent = 'Style';
+						badgeEl.style.background = '#ede9fe';
+						badgeEl.style.color = '#6d28d9';
+					} else if (t === 'content') {
+						badgeEl.textContent = 'Content';
+						badgeEl.style.background = '#dcfce7';
+						badgeEl.style.color = '#15803d';
+					} else if (t === 'restore') {
+						badgeEl.textContent = 'Restore Point';
+						badgeEl.style.background = '#fee2e2';
+						badgeEl.style.color = '#b91c1c';
+					} else {
+						badgeEl.textContent = 'Auto Fix';
+						badgeEl.style.background = '#e0f2fe';
+						badgeEl.style.color = '#0369a1';
+					}
+				}
+			}
+
+			function eraOnRightDropdownChange(selectEl) {
+				var opt = selectEl.options[selectEl.selectedIndex];
+				if (!opt) return;
+
+				var backup = {
+					key: opt.value,
+					title: opt.getAttribute('data-title'),
+					type: opt.getAttribute('data-type'),
+					section_title: opt.getAttribute('data-section'),
+					date_gmt: opt.getAttribute('data-date')
+				};
+				eraUpdateInfoCard(backup);
+			}
+
+			function eraChangeActivePage(pageId) {
+				pageId = parseInt(pageId, 10);
+				if (!eraPagesData[pageId]) return;
+
+				eraCurrentPageId = pageId;
+				var page = eraPagesData[pageId];
+
+				// Update iframe
+				var iframe = document.getElementById('era-demo-iframe');
+				if (iframe) {
+					iframe.src = page.permalink;
+				}
+
+				// Update link
+				var link = document.getElementById('era-open-page-link');
+				if (link) {
+					link.href = page.permalink;
+				}
+
+				// Update dropdown
+				eraPopulateRightDropdown(pageId);
+			}
+
+			function eraSetPreviewViewport(width, btnEl) {
+				var wrap = document.getElementById('era-iframe-wrapper');
+				if (wrap) {
+					wrap.style.width = width;
+				}
+				var btns = document.querySelectorAll('.era-vp-btn');
+				btns.forEach(function(b) {
+					b.style.background = '#1e293b';
+					b.style.color = '#94a3b8';
+					b.classList.remove('active');
+				});
+				btnEl.style.background = '#334155';
+				btnEl.style.color = '#fff';
+				btnEl.classList.add('active');
+			}
+
+			function eraReloadPreviewFrame() {
+				var iframe = document.getElementById('era-demo-iframe');
+				if (iframe) {
+					iframe.src = iframe.src;
+				}
+			}
+
+			function eraExecuteRightRestore() {
+				var select = document.getElementById('era-right-dropdown');
+				if (!select || !select.value) {
+					alert('Please select a version to restore.');
+					return;
+				}
+				var key = select.value;
+				var opt = select.options[select.selectedIndex];
+				var title = opt ? opt.getAttribute('data-title') : key;
+
+				if (!confirm('Are you sure you want to restore this version:\n"' + title + '"?\n\nA safety snapshot of your current page will be saved automatically.')) {
+					return;
+				}
+
+				var btn = document.getElementById('era-btn-split-restore');
+				var label = document.getElementById('era-btn-restore-label');
+				var status = document.getElementById('era-split-status');
+
+				btn.disabled = true;
+				if (label) label.textContent = 'Restoring version...';
+				if (status) status.style.display = 'none';
+
+				jQuery.ajax({
+					url: eraAjaxUrl,
+					type: 'POST',
+					dataType: 'json',
+					data: {
+						action: 'era_restore_backup',
+						page_id: eraCurrentPageId,
+						backup_key: key,
+						era_nonce: eraRestoreNonce,
+						is_ajax: 1
+					},
+					success: function(res) {
+						btn.disabled = false;
+						if (label) label.textContent = 'Restore Selected Version';
+
+						if (!res.success) {
+							if (status) {
+								status.style.display = 'block';
+								status.style.background = '#fef2f2';
+								status.style.color = '#991b1b';
+								status.style.border = '1px solid #fecaca';
+								status.innerHTML = '❌ <strong>Restore Error:</strong> ' + (res.data ? res.data.message : 'Failed');
+							}
+							return;
+						}
+
+						if (status) {
+							status.style.display = 'block';
+							status.style.background = '#f0fdf4';
+							status.style.color = '#166534';
+							status.style.border = '1px solid #bbf7d0';
+							status.innerHTML = '✅ <strong>Restored Successfully!</strong> Page restored to “' + title + '”. Reloading preview...';
+						}
+
+						// Reload live iframe to display restored version immediately
+						setTimeout(function() {
+							eraReloadPreviewFrame();
+						}, 600);
+					},
+					error: function(xhr, st, err) {
+						btn.disabled = false;
+						if (label) label.textContent = 'Restore Selected Version';
+						if (status) {
+							status.style.display = 'block';
+							status.style.background = '#fef2f2';
+							status.style.color = '#991b1b';
+							status.style.border = '1px solid #fecaca';
+							status.innerHTML = '❌ Server communication error: ' + err;
+						}
+					}
+				});
+			}
+
+			function eraOnTableDropdownChange(selectEl, pageId) {
+				var opt = selectEl.options[selectEl.selectedIndex];
+				var pill = document.getElementById('era-table-pill-' + pageId);
+				if (pill && opt) {
+					var title = opt.getAttribute('data-title') || opt.textContent;
+					var section = opt.getAttribute('data-section');
+					var date = opt.getAttribute('data-date');
+					pill.innerHTML = '<span style="font-weight:700;color:#0f172a;">' + title + '</span>' +
+						(section ? ' <span style="color:#64748b;">(' + section + ')</span>' : '') +
+						'<span style="margin-left:auto;color:#94a3b8;font-size:11px;">' + (date || '') + '</span>';
+				}
+			}
+
+			function eraRestoreFromTable(pageId, btnEl) {
+				var select = document.querySelector('.era-table-dropdown[data-page-id="' + pageId + '"]');
+				if (!select || !select.value) return;
+
+				var key = select.value;
+				var opt = select.options[select.selectedIndex];
+				var title = opt ? opt.getAttribute('data-title') : key;
+
+				if (!confirm('Restore this version for Page #' + pageId + ':\n"' + title + '"?\n\nA safety backup will be saved automatically.')) {
+					return;
+				}
+
+				btnEl.disabled = true;
+				btnEl.innerHTML = '↺ Restoring...';
+
+				jQuery.ajax({
+					url: eraAjaxUrl,
+					type: 'POST',
+					dataType: 'json',
+					data: {
+						action: 'era_restore_backup',
+						page_id: pageId,
+						backup_key: key,
+						era_nonce: eraRestoreNonce,
+						is_ajax: 1
+					},
+					success: function(res) {
+						btnEl.disabled = false;
+						btnEl.innerHTML = '✅ Restored!';
+						setTimeout(function() {
+							btnEl.innerHTML = '↺ Restore';
+						}, 2500);
+
+						// If currently previewing this page, reload preview
+						if (pageId === eraCurrentPageId) {
+							eraReloadPreviewFrame();
+						}
+					},
+					error: function(xhr, st, err) {
+						btnEl.disabled = false;
+						btnEl.innerHTML = '↺ Restore';
+						alert('Restore failed: ' + err);
+					}
+				});
+			}
+
+			// Initialize on ready
+			document.addEventListener('DOMContentLoaded', function() {
+				if (eraCurrentPageId && eraPagesData[eraCurrentPageId]) {
+					eraPopulateRightDropdown(eraCurrentPageId);
+				}
+			});
+			if (document.readyState === 'interactive' || document.readyState === 'complete') {
+				if (eraCurrentPageId && eraPagesData[eraCurrentPageId]) {
+					eraPopulateRightDropdown(eraCurrentPageId);
+				}
+			}
+		</script>
 		<?php
 	}
 }

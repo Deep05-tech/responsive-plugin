@@ -442,6 +442,35 @@ class ERA_Chat_Widget {
 				<span class="era-chat-badge">AI</span>
 			</div>
 
+			<!-- Floating Version Selector Button on Right Side -->
+			<div class="era-version-trigger" id="era-version-trigger" title="Page Version History & Restore" onclick="eraToggleFloatingVersions();" style="position:fixed;right:24px;bottom:94px;z-index:999991;background:#0284c7;color:#fff;border-radius:50px;padding:7px 14px;box-shadow:0 4px 14px rgba(0,0,0,0.2);display:flex;align-items:center;gap:6px;cursor:pointer;font-family:sans-serif;font-size:12px;font-weight:700;transition:all 0.2s ease;">
+				<svg style="width:16px;height:16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<polyline points="1 4 1 10 7 10"></polyline>
+					<path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+				</svg>
+				<span>Versions</span>
+			</div>
+
+			<!-- Floating Version Dropdown Panel on Right Side -->
+			<div id="era-floating-versions-panel" style="display:none;position:fixed;right:24px;bottom:144px;z-index:999992;width:340px;background:#fff;border-radius:10px;padding:16px;box-shadow:0 12px 30px rgba(0,0,0,0.25);border:1px solid #cbd5e1;font-family:sans-serif;box-sizing:border-box;">
+				<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+					<h4 style="margin:0;font-size:14px;color:#0f172a;display:flex;align-items:center;gap:6px;">
+						<span>⏱️</span> <?php esc_html_e( 'Page Version History', 'era-bridge' ); ?>
+					</h4>
+					<span onclick="eraToggleFloatingVersions();" style="cursor:pointer;font-size:20px;color:#94a3b8;line-height:1;">&times;</span>
+				</div>
+				<p style="margin:0 0 10px 0;font-size:12px;color:#64748b;line-height:1.4;">
+					<?php esc_html_e( 'Select which change done on this page to restore:', 'era-bridge' ); ?>
+				</p>
+				<select id="era-floating-select" style="width:100%;height:38px;font-size:12px;font-weight:600;border-radius:6px;border:1px solid #0284c7;padding:0 8px;margin-bottom:12px;background:#f0f9ff;color:#0369a1;cursor:pointer;">
+					<option value=""><?php esc_html_e( 'Loading changes...', 'era-bridge' ); ?></option>
+				</select>
+				<button type="button" class="button button-primary" onclick="eraRestoreFloatingSelected(this);" style="width:100%;height:38px;font-size:13px;font-weight:700;background:#0284c7;border-color:#0284c7;border-radius:6px;cursor:pointer;color:#fff;display:flex;align-items:center;justify-content:center;gap:6px;">
+					<span class="dashicons dashicons-backup" style="font-size:16px;margin-top:2px;"></span>
+					<span><?php esc_html_e( 'Restore Selected Version', 'era-bridge' ); ?></span>
+				</button>
+			</div>
+
 			<!-- Chat Window -->
 			<div class="era-chat-window" id="era-chat-window">
 				<div class="era-chat-header">
@@ -553,6 +582,13 @@ class ERA_Chat_Widget {
 					}
 				}
 			};
+
+			// If embedded in preview iframe, hide floating triggers for clean display
+			if (window.self !== window.top) {
+				var style = document.createElement('style');
+				style.textContent = '#era-chat-trigger, #era-version-trigger, #era-chat-window, #era-floating-versions-panel { display: none !important; }';
+				document.head.appendChild(style);
+			}
 
 			function eraGetHistory() {
 				try {
@@ -847,10 +883,31 @@ class ERA_Chat_Widget {
 							return;
 						}
 						var backups = res.data.backups;
+
+						// Build dropdown options
+						var optionsHtml = '';
+						for (var j = 0; j < backups.length; j++) {
+							var bj = backups[j];
+							var tj = bj.title || ('Version #' + (backups.length - j));
+							var dj = bj.date_gmt || '';
+							var label = (j === 0 ? '⚡ Latest: ' : (j + 1) + '. ') + tj + (dj ? ' — ' + dj : '');
+							optionsHtml += '<option value="' + eraEscapeHtml(bj.key) + '">' + eraEscapeHtml(label) + '</option>';
+						}
+
 						var html = '<div style="margin:4px 0;">' +
-							'<strong>⏮️ Available Restore Points:</strong><br/>' +
-							'<p style="font-size:12px;color:#64748b;margin:4px 0 8px;">Select which change or layout you want to restore:</p>' +
-							'<div style="display:flex;flex-direction:column;gap:8px;max-height:260px;overflow-y:auto;padding-right:4px;">';
+							'<strong>⏮️ Version History & Restore:</strong><br/>' +
+							'<p style="font-size:12px;color:#64748b;margin:4px 0 8px;">Select which change you want to restore from the dropdown below:</p>' +
+							'<div style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;padding:10px;margin-bottom:12px;">' +
+							'<label style="display:block;font-size:11px;font-weight:700;color:#334155;text-transform:uppercase;margin-bottom:6px;">Select Change to Restore:</label>' +
+							'<div style="display:flex;gap:6px;">' +
+							'<select id="era-chat-restore-select" style="flex:1;height:36px;font-size:12px;font-weight:600;border-radius:6px;border:1px solid #94a3b8;padding:0 8px;background:#fff;color:#0f172a;">' +
+							optionsHtml +
+							'</select>' +
+							'<button type="button" class="button button-primary" onclick="eraRestoreSelectedFromChat(this);" style="background:#0284c7;color:#fff;border-color:#0284c7;height:36px;padding:0 12px;font-weight:600;font-size:12px;border-radius:6px;cursor:pointer;">Restore</button>' +
+							'</div>' +
+							'</div>' +
+							'<div style="display:flex;flex-direction:column;gap:8px;max-height:220px;overflow-y:auto;padding-right:4px;">';
+
 						for (var i = 0; i < Math.min(backups.length, 10); i++) {
 							var b = backups[i];
 							var title = b.title || (i === 0 ? '🕒 Latest Backup' : '🕒 Backup #' + (backups.length - i));
@@ -882,6 +939,70 @@ class ERA_Chat_Widget {
 				});
 			}
 
+			function eraRestoreSelectedFromChat(btnEl) {
+				var select = document.getElementById('era-chat-restore-select');
+				if (!select || !select.value) return;
+				eraRestoreBackup(select.value, btnEl);
+			}
+
+			function eraToggleFloatingVersions() {
+				var panel = document.getElementById('era-floating-versions-panel');
+				if (!panel) return;
+				if (panel.style.display === 'block') {
+					panel.style.display = 'none';
+				} else {
+					panel.style.display = 'block';
+					eraLoadFloatingVersions();
+				}
+			}
+
+			function eraLoadFloatingVersions() {
+				var select = document.getElementById('era-floating-select');
+				if (!select) return;
+				select.innerHTML = '<option value="">Loading versions...</option>';
+
+				jQuery.ajax({
+					url: eraAjaxUrl,
+					type: 'POST',
+					dataType: 'json',
+					data: {
+						action: 'era_list_backups',
+						page_id: eraActivePageId,
+						nonce: eraChatNonce
+					},
+					success: function(res) {
+						if (!res.success || !res.data || !res.data.backups || res.data.backups.length === 0) {
+							select.innerHTML = '<option value="">No recorded versions</option>';
+							return;
+						}
+						select.innerHTML = '';
+						var backups = res.data.backups;
+						for (var i = 0; i < backups.length; i++) {
+							var b = backups[i];
+							var title = b.title || ('Version #' + (backups.length - i));
+							var dateStr = b.date_gmt || '';
+							var label = (i === 0 ? '⚡ Latest: ' : (i + 1) + '. ') + title + (dateStr ? ' — ' + dateStr : '');
+							var opt = document.createElement('option');
+							opt.value = b.key;
+							opt.textContent = label;
+							select.appendChild(opt);
+						}
+					},
+					error: function() {
+						select.innerHTML = '<option value="">Error loading versions</option>';
+					}
+				});
+			}
+
+			function eraRestoreFloatingSelected(btnEl) {
+				var select = document.getElementById('era-floating-select');
+				if (!select || !select.value) {
+					alert('Please select a version to restore.');
+					return;
+				}
+				eraRestoreBackup(select.value, btnEl);
+			}
+
 			function eraRestoreBackup(backupKey, btnEl) {
 				if (!confirm('Revert page to backup ' + backupKey + '?')) return;
 				if (btnEl) {
@@ -904,7 +1025,8 @@ class ERA_Chat_Widget {
 							if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = 'Restore'; }
 							return;
 						}
-						eraAppendMsg('agent', '✅ <strong>Backup Restored!</strong> The page has been successfully reverted to <code>' + backupKey + '</code>.<br/><br/><button type="button" class="button button-small" onclick="eraReloadWithChat();">🔄 Refresh Page to View</button>', true, null, true);
+						alert('✅ Version successfully restored! The page will now reload.');
+						window.location.reload();
 					},
 					error: function(xhr, status, err) {
 						alert('Restore request failed: ' + err);
