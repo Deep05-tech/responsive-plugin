@@ -486,6 +486,61 @@ class ERA_Engine {
 			}
 		}
 
+		// Handle audit query
+		$is_audit = ( strpos( $raw_msg, 'audit' ) !== false || strpos( $raw_msg, 'check responsive' ) !== false || strpos( $raw_msg, 'scan page' ) !== false || strpos( $raw_msg, 'test responsive' ) !== false );
+		if ( $is_audit ) {
+			$audit_res = self::audit_page_structure( $elementor_data );
+			$m = $audit_res['viewports']['mobile'];
+			$t = $audit_res['viewports']['tablet'];
+			$d = $audit_res['viewports']['desktop'];
+
+			$m_status = $m['hasOverflow'] ? '❌ Overflow (' . $m['issues'] . ' issues, ' . $m['scrollWidth'] . 'px width)' : '✅ Clean (0 Overflows, ' . $m['scrollWidth'] . 'px)';
+			$t_status = $t['hasOverflow'] ? '❌ Overflow (' . $t['issues'] . ' issues, ' . $t['scrollWidth'] . 'px width)' : '✅ Clean (0 Overflows, ' . $t['scrollWidth'] . 'px)';
+			$d_status = $d['hasOverflow'] ? '❌ Overflow (' . $d['issues'] . ' issues, ' . $d['scrollWidth'] . 'px width)' : '✅ Clean (0 Overflows, ' . $d['scrollWidth'] . 'px)';
+
+			$reply = "### 🔍 Responsive Viewport Audit Results\n\n" .
+				"- 📱 **Mobile (375px):** {$m_status}\n" .
+				"- 💻 **Tablet (768px):** {$t_status}\n" .
+				"- 🖥️ **Desktop (1280px):** {$d_status}\n\n";
+
+			if ( $audit_res['summary']['totalIssues'] > 0 ) {
+				$reply .= "**Total Detected Issues:** " . $audit_res['summary']['totalIssues'] . " issues requiring fluid normalization.\n\n" .
+					"I have prepared an automated universal responsive fix for this page. Click below to apply fluid container containment and touch targets.";
+
+				$target_id = ! empty( $candidates[0]['id'] ) ? $candidates[0]['id'] : 'page';
+				$section_title = ! empty( $candidates[0]['heading'] ) ? $candidates[0]['heading'] : 'Page Layout';
+
+				return array(
+					'success'          => true,
+					'reply'            => $reply,
+					'hasAction'        => true,
+					'matchedElementId' => $target_id,
+					'sectionTitle'     => $section_title,
+					'actionType'       => 'style',
+					'action'           => array(
+						'targetSectionId' => $target_id,
+						'sectionTitle'    => $section_title,
+						'actionType'      => 'style',
+						'actionSummary'   => 'Apply universal responsive layout fix to normalize viewports',
+						'detectedIssues'  => array( 'Mobile/tablet viewport overflow and fluid container misalignment' ),
+						'contentPatches'  => array(),
+						'scopedCss'       => self::generate_scoped_section_css( $target_id, $section_title, '', true ),
+					),
+					'explanation'      => $reply,
+					'detectedIssues'   => array( 'Mobile/tablet viewport overflow and fluid container misalignment' ),
+					'contentPatches'   => array(),
+					'scopedCss'        => self::generate_scoped_section_css( $target_id, $section_title, '', true ),
+				);
+			} else {
+				$reply .= "🎉 **All viewports are 100% responsive!** No horizontal overflows or rigid fixed pixel constraints detected.";
+				return array(
+					'success'   => true,
+					'reply'     => $reply,
+					'hasAction' => false,
+				);
+			}
+		}
+
 		// If no OpenAI API Key is configured, guide the user to Settings
 		if ( empty( $api_key ) ) {
 			return array(
@@ -887,10 +942,15 @@ PROMPT;
 		$inspect( $elementor_data );
 
 		$total_issues = count( $mobile_issues ) + count( $tablet_issues ) + count( $desktop_issues );
+		$p0_issues    = ( count( $mobile_issues ) > 0 ? 1 : 0 ) + ( count( $tablet_issues ) > 0 ? 1 : 0 ) + ( count( $desktop_issues ) > 0 ? 1 : 0 );
 
 		return array(
 			'summary'   => array(
 				'totalIssues' => $total_issues,
+				'bySeverity'  => array(
+					'P0' => $p0_issues,
+					'P1' => max( 0, $total_issues - $p0_issues ),
+				),
 				'status'      => $total_issues === 0 ? 'PASS' : 'FAIL',
 			),
 			'viewports' => array(

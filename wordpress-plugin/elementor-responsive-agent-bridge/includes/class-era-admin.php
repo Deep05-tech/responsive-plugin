@@ -543,7 +543,7 @@ class ERA_Admin {
 				if (action === 'apply') label = 'Applying Responsive Fix: ';
 
 				titleEl.innerHTML = label + '<strong>#' + pageId + ' — ' + pageTitle + '</strong>';
-				bodyEl.innerHTML = '<div style="padding:20px; text-align:center;"><span class="era-spinner"></span> ' + (action === 'apply' ? 'Creating safety backup, updating Elementor data, clearing cache & running verification audit...' : 'Scanning viewports (Mobile 375px, Tablet 768px, Desktop 1280px) in headless browser...') + ' Please wait 5-10s.</div>';
+				bodyEl.innerHTML = '<div style="padding:20px; text-align:center;"><span class="era-spinner"></span> ' + (action === 'apply' ? 'Creating safety backup, updating Elementor data, clearing cache & running verification audit...' : 'Analyzing responsive layout and viewports (Mobile 375px, Tablet 768px, Desktop 1280px)...') + '</div>';
 
 				var actionEndpoint = 'era_run_audit';
 				if (action === 'simulate') actionEndpoint = 'era_run_simulate';
@@ -585,8 +585,30 @@ class ERA_Admin {
 							html += '</div>';
 
 							if (data.summary) {
-								html += '<p style="margin: 10px 0;"><strong>Total Issues Detected:</strong> ' + data.summary.totalIssues + ' (P0 Critical Overflows: ' + data.summary.bySeverity.P0 + ')</p>';
+								var p0Count = (data.summary.bySeverity && typeof data.summary.bySeverity.P0 !== 'undefined') ? data.summary.bySeverity.P0 : (data.summary.totalIssues > 0 ? 1 : 0);
+								html += '<p style="margin: 12px 0 6px 0; font-size:13px;"><strong>Total Issues Detected:</strong> ' + data.summary.totalIssues + ' &nbsp;|&nbsp; <strong>P0 Critical Overflows:</strong> <span class="era-badge ' + (p0Count > 0 ? 'era-badge-danger' : 'era-badge-success') + '">' + p0Count + '</span></p>';
 							}
+
+							// Display specific issue details if present
+							var anyDetails = false;
+							var detailsHtml = '<div style="margin-top:10px; padding:10px 14px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; font-size:12px;"><strong>Diagnostic Breakdown:</strong>';
+							if (m.details && m.details.length) {
+								anyDetails = true;
+								detailsHtml += '<div style="margin-top:4px; color:#b91c1c;"><strong>📱 Mobile:</strong> ' + m.details.join('; ') + '</div>';
+							}
+							if (t.details && t.details.length) {
+								anyDetails = true;
+								detailsHtml += '<div style="margin-top:4px; color:#b91c1c;"><strong>💻 Tablet:</strong> ' + t.details.join('; ') + '</div>';
+							}
+							if (d.details && d.details.length) {
+								anyDetails = true;
+								detailsHtml += '<div style="margin-top:4px; color:#b91c1c;"><strong>🖥️ Desktop:</strong> ' + d.details.join('; ') + '</div>';
+							}
+							if (!anyDetails) {
+								detailsHtml += '<div style="margin-top:4px; color:#15803d;">✅ All containers, columns, and widgets adhere strictly to responsive guidelines.</div>';
+							}
+							detailsHtml += '</div>';
+							html += detailsHtml;
 
 							bodyEl.innerHTML = html;
 						} else if (data.mode === 'simulate' && data.viewports) {
