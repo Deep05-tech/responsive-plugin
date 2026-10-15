@@ -313,6 +313,22 @@ class ERA_REST_API {
 			$tree = array();
 		}
 
+		$title          = isset( $body['title'] ) ? sanitize_text_field( $body['title'] ) : '';
+		$section_title  = isset( $body['section_title'] ) ? sanitize_text_field( $body['section_title'] ) : '';
+		$action_type    = isset( $body['action_type'] ) ? sanitize_text_field( $body['action_type'] ) : 'content';
+		$action_summary = isset( $body['action_summary'] ) ? sanitize_text_field( $body['action_summary'] ) : '';
+
+		if ( ! $title && $action_summary ) {
+			$title = $action_summary;
+		}
+		if ( ! $title && $section_title ) {
+			$title = sprintf( __( 'Responsive adjustment for "%s"', 'era-bridge' ), $section_title );
+		}
+		if ( ! $title ) {
+			$first_id = ! empty( $patches[0]['element_id'] ) ? $patches[0]['element_id'] : '';
+			$title = $first_id ? sprintf( __( 'Elementor patch for widget %s', 'era-bridge' ), $first_id ) : __( 'Elementor settings update', 'era-bridge' );
+		}
+
 		// Create Backup
 		$timestamp = time();
 		$backup_key = '_era_backup_' . $timestamp;
@@ -324,9 +340,12 @@ class ERA_REST_API {
 			$backups_list = array();
 		}
 		$backups_list[] = array(
-			'key'       => $backup_key,
-			'timestamp' => $timestamp,
-			'date_gmt'  => gmdate( 'Y-m-d H:i:s', $timestamp ),
+			'key'           => $backup_key,
+			'title'         => $title,
+			'section_title' => $section_title,
+			'action_type'   => $action_type,
+			'timestamp'     => $timestamp,
+			'date_gmt'      => gmdate( 'Y-m-d H:i:s', $timestamp ),
 		);
 		update_post_meta( $post_id, '_era_backups_list', $backups_list );
 
@@ -396,6 +415,29 @@ class ERA_REST_API {
 
 		if ( empty( $backup_raw ) ) {
 			return new WP_Error( 'era_backup_not_found', __( 'Backup not found.', 'era-bridge' ), array( 'status' => 404 ) );
+		}
+
+		// Safety snapshot prior to restore
+		$current_raw = get_post_meta( $post_id, '_elementor_data', true );
+		if ( ! empty( $current_raw ) ) {
+			$safety_timestamp = time();
+			$safety_key       = '_era_backup_' . $safety_timestamp;
+			update_post_meta( $post_id, $safety_key, wp_slash( $current_raw ) );
+
+			$backups_list = get_post_meta( $post_id, '_era_backups_list', true );
+			if ( ! is_array( $backups_list ) ) {
+				$backups_list = array();
+			}
+			$backups_list[] = array(
+				'key'           => $safety_key,
+				'title'         => sprintf( __( 'Safety Snapshot (before restoring %s)', 'era-bridge' ), $backup_key ),
+				'section_title' => '',
+				'action_type'   => 'restore_point',
+				'pre_restore'   => true,
+				'timestamp'     => $safety_timestamp,
+				'date_gmt'      => gmdate( 'Y-m-d H:i:s', $safety_timestamp ),
+			);
+			update_post_meta( $post_id, '_era_backups_list', $backups_list );
 		}
 
 		update_post_meta( $post_id, '_elementor_data', wp_slash( $backup_raw ) );

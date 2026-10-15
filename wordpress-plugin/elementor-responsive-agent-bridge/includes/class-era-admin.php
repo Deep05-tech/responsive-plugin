@@ -251,7 +251,7 @@ class ERA_Admin {
 			$current_raw = '[]';
 		}
 
-		// 1. Create Timestamped Backup
+		// 1. Create Timestamped Backup with Human-Readable Change Title
 		$timestamp  = time();
 		$backup_key = '_era_backup_' . $timestamp;
 		$date_gmt   = gmdate( 'Y-m-d H:i:s', $timestamp );
@@ -263,9 +263,13 @@ class ERA_Admin {
 			$backups_list = array();
 		}
 		$backups_list[] = array(
-			'key'       => $backup_key,
-			'timestamp' => $timestamp,
-			'date_gmt'  => $date_gmt,
+			'key'           => $backup_key,
+			'timestamp'     => $timestamp,
+			'date_gmt'      => $date_gmt,
+			'title'         => __( 'Auto-applied Universal Responsive Layout Fix', 'era-bridge' ),
+			'section_title' => __( 'Full Page', 'era-bridge' ),
+			'action_type'   => 'autofix',
+			'details'       => __( 'Applied universal responsive candidate CSS with fluid containment & multi-viewport rules.', 'era-bridge' ),
 		);
 		update_post_meta( $page_id, '_era_backups_list', $backups_list );
 
@@ -401,6 +405,26 @@ class ERA_Admin {
 		}
 
 		if ( ! empty( $backup_raw ) ) {
+			// Save current state as safety snapshot before restoring
+			$current_raw = get_post_meta( $post_id, '_elementor_data', true );
+			if ( ! empty( $current_raw ) ) {
+				$pre_ts  = time();
+				$pre_key = '_era_backup_' . $pre_ts . '_pre_restore';
+				update_post_meta( $post_id, $pre_key, wp_slash( $current_raw ) );
+				$b_list = get_post_meta( $post_id, '_era_backups_list', true );
+				if ( ! is_array( $b_list ) ) $b_list = array();
+				$b_list[] = array(
+					'key'           => $pre_key,
+					'timestamp'     => $pre_ts,
+					'date_gmt'      => gmdate( 'Y-m-d H:i:s', $pre_ts ),
+					'title'         => sprintf( __( 'Safety Snapshot (before restoring %s)', 'era-bridge' ), esc_html( $backup_key ) ),
+					'section_title' => __( 'Full Page', 'era-bridge' ),
+					'action_type'   => 'restore',
+					'details'       => __( 'Automatic safety snapshot captured prior to restoring an earlier version.', 'era-bridge' ),
+				);
+				update_post_meta( $post_id, '_era_backups_list', $b_list );
+			}
+
 			update_post_meta( $post_id, '_elementor_data', wp_slash( $backup_raw ) );
 			delete_post_meta( $post_id, '_elementor_css' );
 			if ( class_exists( '\Elementor\Plugin' ) && isset( \Elementor\Plugin::$instance->files_manager ) ) {
@@ -681,6 +705,26 @@ class ERA_Admin {
 	}
 
 	/**
+	 * Helper: Format human-readable title for a backup entry.
+	 */
+	public static function get_backup_title( $backup, $index = 1 ) {
+		if ( ! empty( $backup['title'] ) ) {
+			return $backup['title'];
+		}
+		if ( ! empty( $backup['key'] ) && strpos( $backup['key'], 'pre_restore' ) !== false ) {
+			return __( 'Pre-Restore Safety Snapshot', 'era-bridge' );
+		}
+		if ( ! empty( $backup['section_title'] ) && $backup['section_title'] !== 'Full Page' ) {
+			return sprintf( __( 'Changes to %s', 'era-bridge' ), $backup['section_title'] );
+		}
+		$date = ! empty( $backup['date_gmt'] ) ? $backup['date_gmt'] : ( ! empty( $backup['timestamp'] ) ? gmdate( 'M j, Y H:i:s', $backup['timestamp'] ) : '' );
+		if ( $date ) {
+			return sprintf( __( 'Version from %s GMT', 'era-bridge' ), $date );
+		}
+		return sprintf( __( 'Page Version #%d', 'era-bridge' ), $index );
+	}
+
+	/**
 	 * Backups & Restore Submenu View.
 	 */
 	public function render_backups_page() {
@@ -696,48 +740,163 @@ class ERA_Admin {
 			),
 		) );
 
+		// Compile all backups for the quick selector
+		$all_version_options = array();
+		foreach ( $posts as $p ) {
+			$b_list = get_post_meta( $p->ID, '_era_backups_list', true );
+			if ( is_array( $b_list ) ) {
+				$rev = array_reverse( $b_list );
+				foreach ( $rev as $idx => $b ) {
+					$title = self::get_backup_title( $b, $idx + 1 );
+					$all_version_options[] = array(
+						'post_id'    => $p->ID,
+						'page_title' => get_the_title( $p->ID ),
+						'key'        => $b['key'],
+						'title'      => $title,
+						'date_gmt'   => ! empty( $b['date_gmt'] ) ? $b['date_gmt'] : '',
+						'type'       => ! empty( $b['action_type'] ) ? $b['action_type'] : 'backup',
+					);
+				}
+			}
+		}
+
 		?>
-		<div class="wrap">
-			<h1><span class="dashicons dashicons-backup" style="font-size:26px;"></span> <?php esc_html_e( 'ERA Backups & Restores', 'era-bridge' ); ?></h1>
-			<p><?php esc_html_e( 'Below are timestamped backups automatically created before responsive patches were applied.', 'era-bridge' ); ?></p>
+		<div class="wrap" style="max-width:1200px;">
+			<h1 style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+				<span class="dashicons dashicons-backup" style="font-size:28px;width:28px;height:28px;color:#0284c7;"></span>
+				<?php esc_html_e( 'ERA Backups & Version History', 'era-bridge' ); ?>
+			</h1>
+			<p style="color:#64748b;font-size:14px;margin-top:0;">
+				<?php esc_html_e( 'Choose any previous change or version below to restore it instantly. A safety snapshot is always taken before reverting so you never lose work.', 'era-bridge' ); ?>
+			</p>
 
 			<?php if ( isset( $_GET['status'] ) && $_GET['status'] === 'restored' ) : ?>
-				<div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Backup successfully restored and Elementor CSS cache cleared!', 'era-bridge' ); ?></p></div>
+				<div class="notice notice-success is-dismissible" style="border-left-color:#10b981;">
+					<p style="font-weight:600;">✅ <?php esc_html_e( 'Version successfully restored and Elementor CSS cache cleared!', 'era-bridge' ); ?></p>
+				</div>
 			<?php elseif ( isset( $_GET['status'] ) && $_GET['status'] === 'error' ) : ?>
-				<div class="notice notice-error is-dismissible"><p><?php esc_html_e( 'Failed to restore backup.', 'era-bridge' ); ?></p></div>
+				<div class="notice notice-error is-dismissible">
+					<p>❌ <?php esc_html_e( 'Failed to restore version.', 'era-bridge' ); ?></p>
+				</div>
+			<?php endif; ?>
+
+			<?php if ( ! empty( $all_version_options ) ) : ?>
+				<!-- Quick Version Selector Card -->
+				<div class="card" style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:16px 20px;margin:20px 0;">
+					<h3 style="margin:0 0 8px 0;font-size:15px;color:#0f172a;display:flex;align-items:center;gap:6px;">
+						<span>⚡</span> <?php esc_html_e( 'Quick Restore: Choose a Version to Restore', 'era-bridge' ); ?>
+					</h3>
+					<p style="margin:0 0 12px 0;font-size:13px;color:#64748b;">
+						<?php esc_html_e( 'Select which change or layout you want to restore from the dropdown, then click "Restore Selected Version":', 'era-bridge' ); ?>
+					</p>
+					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;" onsubmit="return confirm('Are you sure you want to restore the selected version?');">
+						<input type="hidden" name="action" value="era_restore_backup" />
+						<?php wp_nonce_field( 'era_restore_action', 'era_nonce' ); ?>
+						<select id="era-quick-version-select" onchange="var p = this.value.split('|'); document.getElementById('era-quick-post-id').value = p[0]; document.getElementById('era-quick-key').value = p[1];" style="min-width:480px;max-width:100%;height:38px;padding:0 10px;font-size:13px;border-radius:6px;border-color:#cbd5e1;">
+							<option value="">-- <?php esc_html_e( 'Select which change you want to restore...', 'era-bridge' ); ?> --</option>
+							<?php foreach ( $all_version_options as $opt ) : ?>
+								<option value="<?php echo esc_attr( $opt['post_id'] . '|' . $opt['key'] ); ?>">
+									<?php echo esc_html( '[' . $opt['page_title'] . '] ' . $opt['title'] . ' (' . $opt['date_gmt'] . ')' ); ?>
+								</option>
+							<?php endforeach; ?>
+						</select>
+						<input type="hidden" id="era-quick-post-id" name="post_id" value="" />
+						<input type="hidden" id="era-quick-key" name="backup_key" value="" />
+						<button type="submit" class="button button-primary" style="background:#0284c7;border-color:#0284c7;height:38px;padding:0 18px;font-weight:600;border-radius:6px;">
+							<?php esc_html_e( 'Restore Selected Version', 'era-bridge' ); ?>
+						</button>
+					</form>
+				</div>
 			<?php endif; ?>
 
 			<?php if ( empty( $posts ) ) : ?>
-				<div class="card"><p><?php esc_html_e( 'No backups created yet. When you click "Apply Fix", backups will appear here automatically.', 'era-bridge' ); ?></p></div>
+				<div class="card" style="padding:24px;border-radius:8px;">
+					<p style="font-size:14px;color:#64748b;margin:0;">
+						<?php esc_html_e( 'No backups created yet. When changes or fixes are applied, each version will be recorded here with its title.', 'era-bridge' ); ?>
+					</p>
+				</div>
 			<?php else : ?>
-				<table class="wp-list-table widefat fixed striped" style="margin-top:15px;">
+				<table class="wp-list-table widefat fixed striped" style="margin-top:20px;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
 					<thead>
 						<tr>
-							<th><?php esc_html_e( 'Page ID', 'era-bridge' ); ?></th>
-							<th><?php esc_html_e( 'Page Title', 'era-bridge' ); ?></th>
-							<th><?php esc_html_e( 'Backup Key', 'era-bridge' ); ?></th>
-							<th><?php esc_html_e( 'Backup Date (GMT)', 'era-bridge' ); ?></th>
-							<th><?php esc_html_e( 'Action', 'era-bridge' ); ?></th>
+							<th style="width:18%;"><?php esc_html_e( 'Page', 'era-bridge' ); ?></th>
+							<th style="width:38%;"><?php esc_html_e( 'Version / Change Title', 'era-bridge' ); ?></th>
+							<th style="width:14%;"><?php esc_html_e( 'Change Type', 'era-bridge' ); ?></th>
+							<th style="width:16%;"><?php esc_html_e( 'Date & Time (GMT)', 'era-bridge' ); ?></th>
+							<th style="width:14%; text-align:right;"><?php esc_html_e( 'Action', 'era-bridge' ); ?></th>
 						</tr>
 					</thead>
 					<tbody>
 						<?php foreach ( $posts as $p ) :
 							$backups = get_post_meta( $p->ID, '_era_backups_list', true );
 							if ( ! is_array( $backups ) ) continue;
-							foreach ( array_reverse( $backups ) as $b ) : ?>
+							$reversed_backups = array_reverse( $backups );
+							foreach ( $reversed_backups as $idx => $b ) :
+								$title   = self::get_backup_title( $b, $idx + 1 );
+								$type    = ! empty( $b['action_type'] ) ? $b['action_type'] : 'autofix';
+								$section = ! empty( $b['section_title'] ) ? $b['section_title'] : '';
+								$date    = ! empty( $b['date_gmt'] ) ? $b['date_gmt'] : ( ! empty( $b['timestamp'] ) ? gmdate( 'Y-m-d H:i:s', $b['timestamp'] ) : '-' );
+
+								$type_label = __( 'Auto Fix', 'era-bridge' );
+								$type_bg    = '#e0f2fe';
+								$type_color = '#0369a1';
+
+								if ( $type === 'style' ) {
+									$type_label = __( 'Style', 'era-bridge' );
+									$type_bg    = '#ede9fe';
+									$type_color = '#6d28d9';
+								} elseif ( $type === 'content' ) {
+									$type_label = __( 'Content', 'era-bridge' );
+									$type_bg    = '#dcfce7';
+									$type_color = '#15803d';
+								} elseif ( $type === 'both' ) {
+									$type_label = __( 'Style & Content', 'era-bridge' );
+									$type_bg    = '#fef3c7';
+									$type_color = '#b45309';
+								} elseif ( $type === 'restore' ) {
+									$type_label = __( 'Restore Point', 'era-bridge' );
+									$type_bg    = '#fee2e2';
+									$type_color = '#b91c1c';
+								}
+								?>
 								<tr>
-									<td><strong>#<?php echo esc_html( $p->ID ); ?></strong></td>
-									<td><?php echo esc_html( get_the_title( $p->ID ) ); ?></td>
-									<td><code><?php echo esc_html( $b['key'] ); ?></code></td>
-									<td><?php echo esc_html( $b['date_gmt'] ); ?></td>
 									<td>
+										<strong>#<?php echo esc_html( $p->ID ); ?></strong>
+										<div style="color:#64748b;font-size:12px;margin-top:2px;">
+											<?php echo esc_html( get_the_title( $p->ID ) ); ?>
+										</div>
+									</td>
+									<td>
+										<div style="font-weight:600;font-size:13px;color:#0f172a;line-height:1.4;">
+											<?php echo esc_html( $title ); ?>
+										</div>
+										<div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+											<?php if ( ! empty( $section ) ) : ?>
+												<span style="display:inline-block;background:#f1f5f9;color:#475569;font-size:11px;font-weight:500;padding:1px 6px;border-radius:4px;border:1px solid #e2e8f0;">
+													<?php echo esc_html( $section ); ?>
+												</span>
+											<?php endif; ?>
+											<code style="font-size:11px;color:#94a3b8;background:transparent;padding:0;">
+												<?php echo esc_html( $b['key'] ); ?>
+											</code>
+										</div>
+									</td>
+									<td>
+										<span style="display:inline-block;background:<?php echo esc_attr( $type_bg ); ?>;color:<?php echo esc_attr( $type_color ); ?>;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;">
+											<?php echo esc_html( $type_label ); ?>
+										</span>
+									</td>
+									<td style="color:#64748b;font-size:12px;">
+										<?php echo esc_html( $date ); ?>
+									</td>
+									<td style="text-align:right;">
 										<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline;">
 											<input type="hidden" name="action" value="era_restore_backup" />
 											<input type="hidden" name="post_id" value="<?php echo esc_attr( $p->ID ); ?>" />
 											<input type="hidden" name="backup_key" value="<?php echo esc_attr( $b['key'] ); ?>" />
 											<?php wp_nonce_field( 'era_restore_action', 'era_nonce' ); ?>
-											<button type="submit" class="button button-primary" onclick="return confirm('Restore this backup? This will overwrite the page _elementor_data.');">
-												<?php esc_html_e( 'Restore Backup', 'era-bridge' ); ?>
+											<button type="submit" class="button button-small" style="background:#0284c7;color:#fff;border-color:#0284c7;cursor:pointer;font-weight:500;" onclick="return confirm(<?php echo esc_js( sprintf( __( 'Restore this version: "%s"?', 'era-bridge' ), $title ) ); ?>);">
+												<?php esc_html_e( 'Restore', 'era-bridge' ); ?>
 											</button>
 										</form>
 									</td>

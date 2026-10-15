@@ -15,7 +15,14 @@ export interface PageContext {
   activePageId?: number | string;
   activeScopedCss?: string[];
   semanticClasses?: string[];
-  recentBackups?: Array<{ key: string; timestamp?: number; date_gmt?: string }>;
+  recentBackups?: Array<{
+    key: string;
+    title?: string;
+    section_title?: string;
+    action_type?: string;
+    timestamp?: number;
+    date_gmt?: string;
+  }>;
   lastAppliedAction?: any;
 }
 
@@ -219,12 +226,24 @@ export class ChatAgent {
     if (!this.client) throw new Error('OpenAI client not initialized');
 
     const backups = request.pageContext?.recentBackups || [];
-    let backupsSummary = 'AVAILABLE PAGE BACKUPS / RESTORE POINTS:\n';
+    let backupsSummary = 'AVAILABLE PAGE BACKUPS / RESTORE POINTS (With Change Titles):\n';
     if (backups.length > 0) {
-      for (const b of backups) {
-        backupsSummary += `- Snapshot Key: "${b.key}" (Date/Time: ${b.date_gmt || (b.timestamp ? new Date(b.timestamp * 1000).toISOString() : 'Unknown')})\n`;
+      for (let i = 0; i < backups.length; i++) {
+        const b = backups[i];
+        const num = i + 1;
+        const title = b.title || `Snapshot ${b.key}`;
+        const sec = b.section_title ? ` [Section: ${b.section_title}]` : '';
+        const type = b.action_type ? ` [Type: ${b.action_type}]` : '';
+        const date = b.date_gmt || (b.timestamp ? new Date(b.timestamp * 1000).toISOString() : 'Unknown');
+        backupsSummary += `Option ${num}: "${title}" | Key: "${b.key}"${sec}${type} | Date: ${date}\n`;
       }
-      backupsSummary += `Note: If user asks to undo, revert, or restore previous changes, select the latest snapshot key or the one requested.`;
+      backupsSummary += `\nGuidelines for Restoring / Undoing:
+- When the user asks to undo, revert, or asks which version to restore:
+  - Display the available versions as numbered options with their human-readable change titles (e.g. "Option 1: Changed color of X", "Option 2: Moved X element from right to left").
+  - If the user specifies which version/option they want to restore (e.g. "restore option 2", "revert to the version before I changed color", "restore snapshot _era_backup_..."):
+    - Select that exact target snapshot key.
+    - Set hasAction: true, actionType: "restore", targetBackupKey: [the snapshot key], actionSummary: "Restore [Version Title]".
+  - If the user just says "undo" or "revert" without picking a specific version, present the list of available versions and set targetBackupKey to the latest or most relevant snapshot so they can either 1-click restore or pick another number.`;
     } else {
       backupsSummary += 'None currently recorded.';
     }
@@ -239,8 +258,9 @@ YOUR CAPABILITIES & ROLE:
    - When the user asks a question, greets you, or discusses design, converse naturally without forcing an action card (set hasAction: false).
    - When the user requests a change (content/text, CSS styling, colors, alignment, layout, or mobile responsive fix), propose the exact change (set hasAction: true).
    - When the user asks to undo, revert, or restore a previous change:
-     - Check the AVAILABLE PAGE BACKUPS provided below.
-     - If recent backups exist, set hasAction: true, actionType: "restore", targetBackupKey: [the most relevant/recent backup key], and explain which backup snapshot you are proposing to restore.
+     - Check the AVAILABLE PAGE BACKUPS provided below. Each backup has a human-readable title describing the exact change made (e.g. "Changed color of X", "Moved X element from right to left", "Auto-applied universal responsive layout fix").
+     - Present the options clearly so the user can choose which version to restore.
+     - Set hasAction: true, actionType: "restore", targetBackupKey: [the target snapshot key matching user's choice or the latest change], and actionSummary: "Restore [Version Title]".
      - If no backups are found, explain politely that no automated snapshots were recorded yet on this page.
 
 CRITICAL TECHNICAL RULES FOR ACTIONS (hasAction: true):
@@ -444,27 +464,54 @@ Respond strictly with valid JSON conforming to this schema:
       };
     }
 
-    const isUndo = rawMsg.includes('undo') || rawMsg.includes('revert') || rawMsg.includes('restore') || rawMsg.includes('rollback');
+    const isUndo = rawMsg.includes('undo') || rawMsg.includes('revert') || rawMsg.includes('restore') || rawMsg.includes('rollback') || rawMsg.includes('version') || rawMsg.includes('backup');
     if (isUndo) {
       const backups = request.pageContext?.recentBackups || [];
       if (backups.length > 0) {
-        const latest = backups[backups.length - 1];
-        const dateStr = latest.date_gmt || (latest.timestamp ? new Date(latest.timestamp * 1000).toLocaleString() : '');
+        // Check if user specified a number or key
+        let targetBackup = backups[backups.length - 1]; // default to latest
+        const numMatch = rawMsg.match(/(?:option|version|number|#)\s*(\d+)/i) || rawMsg.match(/\b([1-9])\b/);
+        if (numMatch) {
+          const idx = parseInt(numMatch[1], 10) - 1;
+          if (idx >= 0 && idx < backups.length) {
+            targetBackup = backups[idx];
+          }
+        } else {
+          // Check if specific key is mentioned
+          for (const b of backups) {
+            if (rawMsg.includes(b.key)) {
+              targetBackup = b;
+              break;
+            }
+          }
+        }
+
+        const dateStr = targetBackup.date_gmt || (targetBackup.timestamp ? new Date(targetBackup.timestamp * 1000).toLocaleString() : '');
+        const titleStr = targetBackup.title || `Snapshot ${targetBackup.key}`;
+
+        // Build list of options for the user
+        const optionsList = backups.map((b, i) => {
+          const t = b.title || `Snapshot ${b.key}`;
+          const d = b.date_gmt || '';
+          const activeMark = b.key === targetBackup.key ? ' 👈 *(selected to restore)*' : '';
+          return `${i + 1}. **${t}** (\`${b.key}\`${d ? ' - ' + d : ''})${activeMark}`;
+        }).join('\n');
+
         return {
-          reply: `I found a previous backup snapshot for this page from **${dateStr || 'recent save'}** (\`${latest.key}\`).\n\nClick the button below to revert the page back to this snapshot.`,
+          reply: `I found **${backups.length} recorded version(s)** for this page:\n\n${optionsList}\n\nClick the button below to restore **${titleStr}**, or reply with an option number (e.g. "restore option 1") to select a different version!`,
           hasAction: true,
           actionType: 'restore',
-          targetBackupKey: latest.key,
+          targetBackupKey: targetBackup.key,
           action: {
             actionType: 'restore',
-            targetBackupKey: latest.key,
-            actionSummary: `Restore snapshot ${latest.key}`,
-            detectedIssues: ['Revert to previous page state requested'],
+            targetBackupKey: targetBackup.key,
+            actionSummary: `Restore "${titleStr}"`,
+            detectedIssues: ['Revert to previous page version requested'],
             contentPatches: [],
             scopedCss: '',
           },
-          explanation: `Revert page to snapshot ${latest.key}`,
-          detectedIssues: ['Revert to previous page state requested'],
+          explanation: `Revert page to "${titleStr}" (${targetBackup.key})`,
+          detectedIssues: ['Revert to previous page version requested'],
           contentPatches: [],
           scopedCss: '',
           confidence: 1.0,

@@ -849,17 +849,28 @@ class ERA_Chat_Widget {
 						var backups = res.data.backups;
 						var html = '<div style="margin:4px 0;">' +
 							'<strong>⏮️ Available Restore Points:</strong><br/>' +
-							'<p style="font-size:12px;color:#64748b;margin:4px 0 8px;">Select a snapshot to revert all page changes:</p>' +
-							'<div style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;">';
+							'<p style="font-size:12px;color:#64748b;margin:4px 0 8px;">Select which change or layout you want to restore:</p>' +
+							'<div style="display:flex;flex-direction:column;gap:8px;max-height:260px;overflow-y:auto;padding-right:4px;">';
 						for (var i = 0; i < Math.min(backups.length, 10); i++) {
 							var b = backups[i];
+							var title = b.title || (i === 0 ? '🕒 Latest Backup' : '🕒 Backup #' + (backups.length - i));
 							var dateStr = b.date_gmt || (new Date(b.timestamp * 1000).toLocaleString());
-							html += '<div style="display:flex;align-items:center;justify-content:space-between;background:#f8fafc;padding:8px 10px;border-radius:6px;border:1px solid #e2e8f0;font-size:12px;">' +
-								'<div>' +
-								'<div style="font-weight:600;color:#0f172a;">' + (i === 0 ? '🕒 Latest Backup' : '🕒 Backup #' + (backups.length - i)) + '</div>' +
-								'<div style="color:#64748b;font-size:11px;">' + dateStr + '</div>' +
+							var typeLabel = b.action_type === 'style' ? 'Style' : (b.action_type === 'content' ? 'Content' : (b.action_type === 'restore' ? 'Restore Point' : 'Auto Fix'));
+							var typeBg = b.action_type === 'style' ? '#ede9fe' : (b.action_type === 'content' ? '#dcfce7' : (b.action_type === 'restore' ? '#fee2e2' : '#e0f2fe'));
+							var typeColor = b.action_type === 'style' ? '#6d28d9' : (b.action_type === 'content' ? '#15803d' : (b.action_type === 'restore' ? '#b91c1c' : '#0369a1'));
+
+							html += '<div style="background:#f8fafc;padding:10px;border-radius:8px;border:1px solid #e2e8f0;font-size:12px;">' +
+								'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">' +
+								'<div style="flex:1;">' +
+								'<div style="font-weight:600;color:#0f172a;line-height:1.3;margin-bottom:3px;">' + eraEscapeHtml(title) + '</div>' +
+								'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;">' +
+								'<span style="background:' + typeBg + ';color:' + typeColor + ';font-size:10px;font-weight:600;padding:1px 6px;border-radius:10px;">' + typeLabel + '</span>' +
+								(b.section_title ? '<span style="background:#f1f5f9;color:#475569;font-size:10px;padding:1px 6px;border-radius:4px;border:1px solid #e2e8f0;">' + eraEscapeHtml(b.section_title) + '</span>' : '') +
+								'<span style="color:#64748b;font-size:11px;">' + eraEscapeHtml(dateStr) + '</span>' +
 								'</div>' +
-								'<button type="button" class="button button-small" onclick="eraRestoreBackup(\'' + b.key + '\', this)" style="background:#0284c7;color:#fff;border-color:#0284c7;cursor:pointer;">Restore</button>' +
+								'</div>' +
+								'<button type="button" class="button button-small" onclick="eraRestoreBackup(\'' + eraEscapeHtml(b.key) + '\', this)" style="background:#0284c7;color:#fff;border-color:#0284c7;cursor:pointer;flex-shrink:0;">Restore</button>' +
+								'</div>' +
 								'</div>';
 						}
 						html += '</div></div>';
@@ -1070,6 +1081,7 @@ class ERA_Chat_Widget {
 								matchedElementId: targetSectionId,
 								sectionTitle: sectionTitle,
 								actionType: actionType,
+								actionSummary: actionSummary,
 								scopedCss: scopedCss || '',
 								contentPatches: contentPatches || [],
 								applied: false,
@@ -1093,7 +1105,7 @@ class ERA_Chat_Widget {
 							var btn = loadingMsg.querySelector('.era-btn-apply-section');
 							if (btn) {
 								btn.onclick = function() {
-									eraApplySectionFix(targetSectionId, scopedCss || '', contentPatches || [], btn);
+									eraApplySectionFix(targetSectionId, scopedCss || '', contentPatches || [], btn, actionSummary, sectionTitle, actionType);
 								};
 							}
 						} else {
@@ -1115,7 +1127,7 @@ class ERA_Chat_Widget {
 				});
 			}
 
-			function eraApplySectionFix(elementId, scopedCss, contentPatches, btnEl) {
+			function eraApplySectionFix(elementId, scopedCss, contentPatches, btnEl, actionSummary, sectionTitle, actionType) {
 				btnEl.disabled = true;
 				btnEl.innerHTML = '<span class="era-spinner-inline"></span> Applying changes...';
 
@@ -1129,6 +1141,9 @@ class ERA_Chat_Widget {
 						element_id: elementId,
 						scoped_css: scopedCss || '',
 						content_patches: JSON.stringify(contentPatches || []),
+						action_summary: actionSummary || '',
+						section_title: sectionTitle || '',
+						action_type: actionType || '',
 						nonce: eraChatNonce
 					},
 					success: function(res) {
@@ -1199,7 +1214,7 @@ class ERA_Chat_Widget {
 									} else {
 										(function(d, b) {
 											b.onclick = function() {
-												eraApplySectionFix(d.matchedElementId, d.scopedCss || '', d.contentPatches || [], b);
+												eraApplySectionFix(d.matchedElementId, d.scopedCss || '', d.contentPatches || [], b, d.actionSummary, d.sectionTitle, d.actionType);
 											};
 										})(item.data, btn);
 									}
@@ -1234,7 +1249,7 @@ class ERA_Chat_Widget {
 					if (btnId && window.eraFixCache && window.eraFixCache[btnId]) {
 						var fix = window.eraFixCache[btnId];
 						if (!fix.applied) {
-							eraApplySectionFix(fix.matchedElementId, fix.scopedCss || '', fix.contentPatches || [], btn);
+							eraApplySectionFix(fix.matchedElementId, fix.scopedCss || '', fix.contentPatches || [], btn, fix.actionSummary, fix.sectionTitle, fix.actionType);
 						}
 					}
 				});
@@ -1282,7 +1297,33 @@ class ERA_Chat_Widget {
 		if ( ! is_array( $page_context ) ) {
 			$page_context = array();
 		}
-		$page_context['recentBackups'] = array_slice( $backups_list, -5 );
+		$formatted_backups = array();
+		foreach ( array_slice( $backups_list, -10 ) as $b ) {
+			$key   = isset( $b['key'] ) ? $b['key'] : '';
+			$title = ! empty( $b['title'] ) ? $b['title'] : '';
+			if ( ! $title ) {
+				$section = ! empty( $b['section_title'] ) ? $b['section_title'] : '';
+				$action  = ! empty( $b['action_type'] ) ? $b['action_type'] : '';
+				if ( ! empty( $b['pre_restore'] ) ) {
+					$title = 'Safety Snapshot (prior to restore)';
+				} elseif ( $section ) {
+					$title = 'Responsive Fix for ' . $section;
+				} elseif ( $action ) {
+					$title = ucfirst( $action ) . ' Update';
+				} else {
+					$title = 'Backup ' . ( ! empty( $b['date_gmt'] ) ? $b['date_gmt'] : $key );
+				}
+			}
+			$formatted_backups[] = array(
+				'key'           => $key,
+				'title'         => $title,
+				'section_title' => isset( $b['section_title'] ) ? $b['section_title'] : '',
+				'action_type'   => isset( $b['action_type'] ) ? $b['action_type'] : '',
+				'date_gmt'      => isset( $b['date_gmt'] ) ? $b['date_gmt'] : '',
+				'timestamp'     => isset( $b['timestamp'] ) ? $b['timestamp'] : 0,
+			);
+		}
+		$page_context['recentBackups'] = $formatted_backups;
 
 		$payload = array(
 			'pageId'        => $page_id,
@@ -1421,6 +1462,9 @@ class ERA_Chat_Widget {
 		$scoped_css          = isset( $_POST['scoped_css'] ) ? wp_unslash( (string) $_POST['scoped_css'] ) : '';
 		$content_patches_raw = isset( $_POST['content_patches'] ) ? wp_unslash( (string) $_POST['content_patches'] ) : '';
 		$content_patches     = ! empty( $content_patches_raw ) ? json_decode( $content_patches_raw, true ) : array();
+		$action_summary      = isset( $_POST['action_summary'] ) ? sanitize_text_field( wp_unslash( $_POST['action_summary'] ) ) : '';
+		$section_title       = isset( $_POST['section_title'] ) ? sanitize_text_field( wp_unslash( $_POST['section_title'] ) ) : '';
+		$action_type         = isset( $_POST['action_type'] ) ? sanitize_text_field( wp_unslash( $_POST['action_type'] ) ) : 'style';
 
 		// Strip any accidental backslash quote escaping caused by magic quotes or double slash
 		$scoped_css = str_replace( array( '\"', "\'" ), array( '"', "'" ), $scoped_css );
@@ -1434,10 +1478,22 @@ class ERA_Chat_Widget {
 			$current_raw = '[]';
 		}
 
-		// 1. Create Timestamped Backup
+		// 1. Create Timestamped Backup with Descriptive Title
 		$timestamp  = time();
 		$backup_key = '_era_backup_' . $timestamp;
 		$date_gmt   = gmdate( 'Y-m-d H:i:s', $timestamp );
+
+		// Derive human-readable change title
+		$change_title = '';
+		if ( ! empty( $action_summary ) ) {
+			$change_title = $action_summary;
+		} elseif ( ! empty( $section_title ) ) {
+			$change_title = sprintf( __( 'Applied %s fixes to %s', 'era-bridge' ), $action_type, $section_title );
+		} elseif ( ! empty( $content_patches ) ) {
+			$change_title = __( 'Updated section text & content', 'era-bridge' );
+		} else {
+			$change_title = __( 'Updated section responsive styling', 'era-bridge' );
+		}
 
 		update_post_meta( $page_id, $backup_key, wp_slash( $current_raw ) );
 
@@ -1446,9 +1502,12 @@ class ERA_Chat_Widget {
 			$backups_list = array();
 		}
 		$backups_list[] = array(
-			'key'       => $backup_key,
-			'timestamp' => $timestamp,
-			'date_gmt'  => $date_gmt,
+			'key'           => $backup_key,
+			'timestamp'     => $timestamp,
+			'date_gmt'      => $date_gmt,
+			'title'         => $change_title,
+			'section_title' => $section_title,
+			'action_type'   => $action_type,
 		);
 		update_post_meta( $page_id, '_era_backups_list', $backups_list );
 
@@ -1610,8 +1669,33 @@ class ERA_Chat_Widget {
 			$backups_list = array();
 		}
 
+		$formatted = array();
+		$reversed = array_reverse( $backups_list );
+		foreach ( $reversed as $idx => $b ) {
+			$title = '';
+			if ( ! empty( $b['title'] ) ) {
+				$title = $b['title'];
+			} elseif ( ! empty( $b['key'] ) && strpos( $b['key'], 'pre_restore' ) !== false ) {
+				$title = __( 'Pre-Restore Safety Snapshot', 'era-bridge' );
+			} elseif ( ! empty( $b['section_title'] ) && $b['section_title'] !== 'Full Page' ) {
+				$title = sprintf( __( 'Changes to %s', 'era-bridge' ), $b['section_title'] );
+			} else {
+				$date_str = ! empty( $b['date_gmt'] ) ? $b['date_gmt'] : ( ! empty( $b['timestamp'] ) ? gmdate( 'Y-m-d H:i:s', $b['timestamp'] ) : '' );
+				$title = $date_str ? sprintf( __( 'Version from %s GMT', 'era-bridge' ), $date_str ) : sprintf( __( 'Page Version #%d', 'era-bridge' ), $idx + 1 );
+			}
+
+			$formatted[] = array(
+				'key'           => $b['key'],
+				'timestamp'     => isset( $b['timestamp'] ) ? $b['timestamp'] : 0,
+				'date_gmt'      => isset( $b['date_gmt'] ) ? $b['date_gmt'] : '',
+				'title'         => $title,
+				'section_title' => isset( $b['section_title'] ) ? $b['section_title'] : '',
+				'action_type'   => isset( $b['action_type'] ) ? $b['action_type'] : 'style',
+			);
+		}
+
 		wp_send_json_success( array(
-			'backups' => array_reverse( $backups_list ),
+			'backups' => $formatted,
 		) );
 	}
 
@@ -1649,8 +1733,21 @@ class ERA_Chat_Widget {
 		// Create a safety snapshot of current state before reverting
 		$current_raw = get_post_meta( $page_id, '_elementor_data', true );
 		if ( ! empty( $current_raw ) ) {
-			$pre_restore_key = '_era_backup_' . time() . '_pre_restore';
+			$pre_ts = time();
+			$pre_restore_key = '_era_backup_' . $pre_ts . '_pre_restore';
 			update_post_meta( $page_id, $pre_restore_key, wp_slash( $current_raw ) );
+
+			$b_list = get_post_meta( $page_id, '_era_backups_list', true );
+			if ( ! is_array( $b_list ) ) $b_list = array();
+			$b_list[] = array(
+				'key'           => $pre_restore_key,
+				'timestamp'     => $pre_ts,
+				'date_gmt'      => gmdate( 'Y-m-d H:i:s', $pre_ts ),
+				'title'         => sprintf( __( 'Safety Snapshot (before restoring %s)', 'era-bridge' ), esc_html( $backup_key ) ),
+				'section_title' => __( 'Full Page', 'era-bridge' ),
+				'action_type'   => 'restore',
+			);
+			update_post_meta( $page_id, '_era_backups_list', $b_list );
 		}
 
 		// Restore elementor data

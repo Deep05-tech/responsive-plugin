@@ -22,7 +22,14 @@ interface MockPage {
   status: string;
   data: ElementorElement[];
   backups: Record<string, ElementorElement[]>;
-  backupsList: Array<{ key: string; timestamp: number; date_gmt: string }>;
+  backupsList: Array<{
+    key: string;
+    title?: string;
+    section_title?: string;
+    action_type?: string;
+    timestamp: number;
+    date_gmt: string;
+  }>;
 }
 
 const mockPages: Record<number, MockPage> = {
@@ -191,9 +198,13 @@ const server = http.createServer(async (req, res) => {
 
       const timestamp = Date.now();
       const backupKey = `_era_backup_${timestamp}`;
+      const changeTitle = body.title || body.action_summary || (body.section_title ? `Change for ${body.section_title}` : 'Responsive adjustment');
       page.backups[backupKey] = JSON.parse(JSON.stringify(page.data));
       page.backupsList.push({
         key: backupKey,
+        title: changeTitle,
+        section_title: body.section_title || '',
+        action_type: body.action_type || 'content',
         timestamp,
         date_gmt: new Date(timestamp).toUTCString(),
       });
@@ -259,6 +270,19 @@ const server = http.createServer(async (req, res) => {
         );
         return;
       }
+
+      // Record pre-restore safety snapshot
+      const safetyTime = Date.now();
+      const safetyKey = `_era_backup_${safetyTime}`;
+      page.backups[safetyKey] = JSON.parse(JSON.stringify(page.data));
+      page.backupsList.push({
+        key: safetyKey,
+        title: `Safety Snapshot (before restoring ${backupKey})`,
+        section_title: '',
+        action_type: 'restore_point',
+        timestamp: safetyTime,
+        date_gmt: new Date(safetyTime).toUTCString(),
+      });
 
       page.data = JSON.parse(JSON.stringify(page.backups[backupKey]));
       page.modified = new Date().toISOString();
