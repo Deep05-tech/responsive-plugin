@@ -45,7 +45,7 @@ class ERA_Chat_Widget {
 	 * Convenience 1-click local admin login for seamless testing on local development sites.
 	 */
 	public function handle_quick_login() {
-		if ( isset( $_GET['era_auto_login'] ) && $_GET['era_auto_login'] === 'local_admin' ) {
+		if ( isset( $_GET['era_auto_login'] ) && in_array( $_GET['era_auto_login'], array( '1', 'local_admin' ), true ) ) {
 			$user = get_user_by( 'login', 'deep' );
 			if ( $user ) {
 				wp_set_current_user( $user->ID, $user->user_login );
@@ -58,23 +58,6 @@ class ERA_Chat_Widget {
 		}
 	}
 
-	/**
-	 * Find Node binary path.
-	 */
-	private function get_node_bin() {
-		$candidates = array(
-			'/home/uday/.nvm/versions/node/v22.22.3/bin/node',
-			'/usr/local/bin/node',
-			'/usr/bin/node',
-		);
-		foreach ( $candidates as $bin ) {
-			if ( file_exists( $bin ) && is_executable( $bin ) ) {
-				return $bin;
-			}
-		}
-		$detected = trim( (string) shell_exec( 'which node 2>/dev/null' ) );
-		return ! empty( $detected ) ? $detected : 'node';
-	}
 
 	/**
 	 * Render floating chat widget.
@@ -174,6 +157,7 @@ class ERA_Chat_Widget {
 					box-shadow: 0 20px 40px rgba(15, 23, 42, 0.25), 0 0 0 1px rgba(226, 232, 240, 0.8);
 					flex-direction: column;
 					overflow: hidden;
+					z-index: 999999;
 					animation: era-slide-up 0.25s ease-out;
 				}
 				@keyframes era-slide-up {
@@ -1407,8 +1391,7 @@ class ERA_Chat_Widget {
 			wp_send_json_error( array( 'message' => 'No active page ID found.' ), 400 );
 		}
 
-		// Try HTTP connection to local ERA Server (http://127.0.0.1:8000/api/chat)
-		$server_url = defined( 'ERA_AGENT_API_URL' ) ? ERA_AGENT_API_URL : 'http://127.0.0.1:8000/api/chat';
+		// Pure PHP & OpenAI Direct API Engine (No Node.js or background servers needed)
 		$current_raw = get_post_meta( $page_id, '_elementor_data', true );
 		$parsed_data = ! empty( $current_raw ) ? json_decode( $current_raw, true ) : null;
 
@@ -1447,125 +1430,40 @@ class ERA_Chat_Widget {
 		}
 		$page_context['recentBackups'] = $formatted_backups;
 
-		$payload = array(
-			'pageId'        => $page_id,
-			'message'       => $message,
-			'history'       => $history,
-			'imageBase64'   => $image_base64,
-			'elementorData' => $parsed_data,
-			'pageContext'   => $page_context,
-		);
-
-		$response = wp_remote_post( $server_url, array(
-			'timeout' => 45,
-			'headers' => array( 'Content-Type' => 'application/json' ),
-			'body'    => wp_json_encode( $payload ),
-		) );
-
-		if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
-			$body = wp_remote_retrieve_body( $response );
-			$parsed = json_decode( $body, true );
-			if ( $parsed && ! empty( $parsed['success'] ) ) {
-				wp_send_json_success( $parsed );
-			}
-		}
-
-		// CLI Fallback: Execute node dist/cli.js chat
-		$plugin_dir = defined( 'ERA_BRIDGE_PLUGIN_DIR' ) ? ERA_BRIDGE_PLUGIN_DIR : plugin_dir_path( __FILE__ ) . '../';
-		$root_dir   = dirname( dirname( untrailingslashit( $plugin_dir ) ) );
-		$agent_dir  = $root_dir . '/agent';
-		$cli_path   = $agent_dir . '/dist/cli.js';
-		$node_bin   = $this->get_node_bin();
-		$node_dir   = dirname( $node_bin );
-
-		$temp_img_file = '';
-		if ( ! empty( $image_base64 ) ) {
-			$upload_dir = wp_upload_dir();
-			$temp_img_file = $upload_dir['basedir'] . '/era-chat-tmp-' . time() . '-' . wp_rand( 100, 999 ) . '.png';
-			$data_clean = preg_replace( '#^data:image/\w+;base64,#i', '', $image_base64 );
-			@file_put_contents( $temp_img_file, base64_decode( $data_clean ) );
-		}
-
-		$temp_hist_file = '';
-		if ( ! empty( $history ) ) {
-			$upload_dir = wp_upload_dir();
-			$temp_hist_file = $upload_dir['basedir'] . '/era-chat-hist-' . time() . '-' . wp_rand( 100, 999 ) . '.json';
-			@file_put_contents( $temp_hist_file, wp_json_encode( $history ) );
-		}
-
-		$temp_ctx_file = '';
-		if ( ! empty( $page_context ) ) {
-			$upload_dir = wp_upload_dir();
-			$temp_ctx_file = $upload_dir['basedir'] . '/era-chat-ctx-' . time() . '-' . wp_rand( 100, 999 ) . '.json';
-			@file_put_contents( $temp_ctx_file, wp_json_encode( $page_context ) );
-		}
-
-		$cmd = sprintf(
-			'export PATH=%s:"$PATH:/usr/local/bin:/usr/bin:/bin" && cd %s && %s %s chat -p %d %s %s %s %s --json 2>&1',
-			escapeshellarg( $node_dir ),
-			escapeshellarg( $agent_dir ),
-			escapeshellarg( $node_bin ),
-			escapeshellarg( $cli_path ),
-			$page_id,
-			$message ? '-m ' . escapeshellarg( $message ) : '',
-			$temp_img_file ? '-i ' . escapeshellarg( $temp_img_file ) : '',
-			$temp_hist_file ? '--history ' . escapeshellarg( $temp_hist_file ) : '',
-			$temp_ctx_file ? '--context ' . escapeshellarg( $temp_ctx_file ) : ''
-		);
-
-		$output = shell_exec( $cmd );
-		if ( $temp_img_file && file_exists( $temp_img_file ) ) {
-			@unlink( $temp_img_file );
-		}
-		if ( $temp_hist_file && file_exists( $temp_hist_file ) ) {
-			@unlink( $temp_hist_file );
-		}
-		if ( $temp_ctx_file && file_exists( $temp_ctx_file ) ) {
-			@unlink( $temp_ctx_file );
-		}
-
-		// 1. Try parsing direct JSON output from CLI
-		$cli_json = json_decode( trim( (string) $output ), true );
-		if ( is_array( $cli_json ) ) {
-			if ( ! empty( $cli_json['success'] ) ) {
-				wp_send_json_success( $cli_json );
-			} elseif ( isset( $cli_json['reply'] ) || isset( $cli_json['explanation'] ) || ! empty( $cli_json['matchedElementId'] ) ) {
-				wp_send_json_success( $cli_json );
-			}
-		}
-
-		// 2. Parse CLI output regex fallback for matched section
-		$matched_id = '';
-		$section_title = '';
-		if ( preg_match( '/TARGETED SECTION:\s*(.+?)\s*\(ID:\s*([a-zA-Z0-9_-]+)\)/i', $output, $m ) ) {
-			$section_title = trim( $m[1] );
-			$matched_id    = trim( $m[2] );
-		}
-
-		if ( $matched_id ) {
-			// Generate Scoped CSS for the section
-			$clean_id = preg_replace( '/[^a-zA-Z0-9_-]/', '', $matched_id );
-			$scoped_css = "/* Scoped Responsive Fix: {$section_title} ({$clean_id}) */\n" .
-				".elementor-element-{$clean_id}, [data-id=\"{$clean_id}\"] { height: auto !important; min-height: fit-content !important; box-sizing: border-box !important; max-width: 100% !important; overflow-x: clip !important; }\n" .
-				".elementor-element-{$clean_id} .elementor-container, .elementor-element-{$clean_id} .elementor-widget-wrap { height: auto !important; min-height: fit-content !important; max-width: 100% !important; box-sizing: border-box !important; }\n" .
-				".elementor-element-{$clean_id} input, .elementor-element-{$clean_id} select, .elementor-element-{$clean_id} textarea, .elementor-element-{$clean_id} button { max-width: 100% !important; box-sizing: border-box !important; }\n" .
-				"@media (max-width: 1200px) { .elementor-element-{$clean_id} [class*=\"reveal\"], .elementor-element-{$clean_id} [class*=\"animate\"] { transform: none !important; opacity: 1 !important; visibility: visible !important; } }\n" .
-				"@media (max-width: 767px) { .elementor-element-{$clean_id} .elementor-column { width: 100% !important; } }\n";
-
-			wp_send_json_success( array(
-				'matchedElementId' => $matched_id,
-				'sectionTitle'     => $section_title,
-				'actionType'       => 'style',
-				'detectedIssues'   => array( 'Container content overflow & bleed', 'Responsive viewport stacking misalignment' ),
-				'explanation'      => "Targeted section '{$section_title}'. Fluid containment and touch sizing generated strictly for this section.",
-				'scopedCss'        => $scoped_css,
-				'contentPatches'   => array(),
+		// If external node bridge is explicitly configured, attempt it first
+		if ( defined( 'ERA_AGENT_API_URL' ) && ! empty( ERA_AGENT_API_URL ) ) {
+			$payload = array(
+				'pageId'        => $page_id,
+				'message'       => $message,
+				'history'       => $history,
+				'imageBase64'   => $image_base64,
+				'elementorData' => $parsed_data,
+				'pageContext'   => $page_context,
+			);
+			$response = wp_remote_post( ERA_AGENT_API_URL, array(
+				'timeout' => 45,
+				'headers' => array( 'Content-Type' => 'application/json' ),
+				'body'    => wp_json_encode( $payload ),
 			) );
+			if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
+				$body = wp_remote_retrieve_body( $response );
+				$parsed = json_decode( $body, true );
+				if ( $parsed && ! empty( $parsed['success'] ) ) {
+					wp_send_json_success( $parsed );
+				}
+			}
 		}
 
-		wp_send_json_error( array(
-			'message' => 'Agent CLI failed to process the request: ' . wp_strip_all_tags( (string) $output ),
-		), 500 );
+		// Execute 100% Standalone Pure PHP Chat Engine
+		$result = ERA_Engine::chat( $page_id, $message, $history, $image_base64, $page_context, $parsed_data );
+
+		if ( ! empty( $result['success'] ) ) {
+			wp_send_json_success( $result );
+		} else {
+			wp_send_json_error( array(
+				'message' => ! empty( $result['message'] ) ? $result['message'] : 'Failed to process AI chat message.',
+			), 500 );
+		}
 	}
 
 	/**

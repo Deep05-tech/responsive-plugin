@@ -22,6 +22,7 @@ if ( ! defined( 'ERA_ENABLE_WRITES' ) ) {
 	define( 'ERA_ENABLE_WRITES', false );
 }
 
+require_once ERA_BRIDGE_PLUGIN_DIR . 'includes/class-era-engine.php';
 require_once ERA_BRIDGE_PLUGIN_DIR . 'includes/class-era-rest-api.php';
 require_once ERA_BRIDGE_PLUGIN_DIR . 'includes/class-era-admin.php';
 require_once ERA_BRIDGE_PLUGIN_DIR . 'includes/class-era-chat-widget.php';
